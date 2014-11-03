@@ -14,10 +14,10 @@
     public class KBEThread
     {
 
-        KBEngineApp app_;
+        KBEngineAppThread app_;
 		public bool over = false;
 		
-        public KBEThread(KBEngineApp app)
+		public KBEThread(KBEngineAppThread app)
         {
             this.app_ = app;
         }
@@ -54,9 +54,6 @@ START_RUN:
 		public static KBEngineApp app = null;
 		private NetworkInterface _networkInterface = null;
 		
-        private Thread _t = null;
-        public KBEThread kbethread = null;
-        
         public string username = "kbengine";
         public string password = "123456";
         
@@ -127,8 +124,6 @@ START_RUN:
 		
 		public static EntityDef entityDef = new EntityDef();
 		
-		public bool isbreak = false;
-		
         public KBEngineApp(string persistentDataPath, string ip, UInt16 port, sbyte clientType)
         {
 			_clientType = clientType;
@@ -137,13 +132,6 @@ START_RUN:
 			
 			app = this;
 
-        	_networkInterface = new NetworkInterface(this);
-        	
-            kbethread = new KBEThread(this);
-            
-            _t = new Thread(new ThreadStart(kbethread.run));
-            _t.Start();
-            
             // 注册事件
             installEvents();
             
@@ -159,36 +147,30 @@ START_RUN:
 			Event.registerIn("relogin_baseapp", this, "relogin_baseapp");
 		}
 	
-        public void destroy()
+        public virtual void destroy()
         {
         	Dbg.WARNING_MSG("KBEngine::destroy()");
-        	isbreak = true;
-        	
-        	int i = 0;
-        	while(!kbethread.over && i < 50)
-        	{
-        		Thread.Sleep(1);
-        		i += 1;
-        	}
-        	
-			if(_t != null)
-        		_t.Abort();
-
-        	_t = null;
         	
         	reset();
         	KBEngine.Event.deregisterIn(this);
         	resetMessages();
         }
         
-        public Thread t(){
-        	return _t;
-        }
-        
         public NetworkInterface networkInterface(){
         	return _networkInterface;
         }
         
+		public void initNetworkInterface( NetworkInterface networkInterface)
+		{
+			if (_networkInterface != null)
+				throw new System.InvalidOperationException( this + "::Active(), I was actived, may be somewhere has logic error." );
+
+			if (networkInterface == null)
+				throw new System.NotSupportedException( this + "::Active(), I was actived, may be somewhere has logic error." );
+
+			_networkInterface = networkInterface;
+		}
+
         public byte[] serverdatas()
         {
         	return _serverdatas;
@@ -257,16 +239,11 @@ START_RUN:
 			return Regex.IsMatch(strEmail, @"^([\w-\.]+)@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.)|(([\w-]+\.)+))([a-zA-Z]{2,4}|[0-9]{1,3})(\]?)$"); 
 		}  
 		
-		public void process()
+		public void processOnce()
 		{
-			while(!isbreak)
-			{
-				Event.processInEvents();
-				_networkInterface.process();
-				sendTick();
-			}
-			
-			Dbg.WARNING_MSG("KBEngine::process(): break!");
+			Event.processInEvents();
+			_networkInterface.process();
+			sendTick();
 		}
 		
 		public Entity player(){
@@ -2125,4 +2102,61 @@ START_RUN:
 			Dbg.DEBUG_MSG("KBEngine::Client_onReqAccountNewPasswordCB: " + username + " is successfully!");
 		}
 	}
-} 
+
+	public class KBEngineAppThread : KBEngineApp
+	{
+		private Thread _t = null;
+		public KBEThread kbethread = null;
+
+		public bool isbreak = false;
+		
+
+		public KBEngineAppThread(string persistentDataPath, string ip, UInt16 port, sbyte clientType) : base( persistentDataPath, ip, port, clientType )
+		{
+			initNetworkInterface( new NetworkInterface(this, 100000) );
+			
+			kbethread = new KBEThread(this);
+			
+			_t = new Thread(new ThreadStart(kbethread.run));
+			_t.Start();
+		}
+		
+		public void process()
+		{
+			while(!isbreak)
+			{
+				processOnce();
+			}
+			
+			Dbg.WARNING_MSG("KBEngineAppThread::process(): break!");
+		}
+	
+		public override void destroy()
+		{
+			Dbg.WARNING_MSG("KBEngineAppThread::destroy()");
+			isbreak = true;
+			
+			int i = 0;
+			while(!kbethread.over && i < 50)
+			{
+				Thread.Sleep(1);
+				i += 1;
+			}
+			
+			if(_t != null)
+				_t.Abort();
+			
+			_t = null;
+
+			base.destroy();
+		}
+	}
+	
+	public class KBEngineAppNoThread : KBEngineApp
+	{
+		public KBEngineAppNoThread(string persistentDataPath, string ip, UInt16 port, sbyte clientType) : base( persistentDataPath, ip, port, clientType )
+		{
+			initNetworkInterface( new NetworkInterface(this, 0) );
+		}
+	}
+}

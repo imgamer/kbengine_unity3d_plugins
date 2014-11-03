@@ -17,19 +17,24 @@
     {
     	public const int TCP_PACKET_MAX = 1460;
     	
-        private Socket socket_ = null;
-		private List<MemoryStream> packets_ = null;
+		private int _waitingForRead = -1;
+		private Socket socket_ = null;
 		private MessageReader msgReader = new MessageReader();
 		private static ManualResetEvent TimeoutObject = new ManualResetEvent(false);
 		private static byte[] _datas = new byte[MemoryStream.BUFFER_MAX];
 		
         public NetworkInterface(KBEngineApp app)
         {
-        	packets_ = new List<MemoryStream>();
-        	
         	Message.bindFixedMessage();
         }
-		
+
+		public NetworkInterface(KBEngineApp app, int waitingForRead)
+		{
+			Message.bindFixedMessage();
+
+			_waitingForRead = waitingForRead;
+		}
+
 		public void reset()
 		{
 			if(valid())
@@ -38,7 +43,6 @@
 			}
 			socket_ = null;
 			msgReader = new MessageReader();
-			packets_.Clear();
 			TimeoutObject.Set();
 		}
 		
@@ -172,7 +176,7 @@ __RETRY:
 				throw new ArgumentException ("invalid socket!");
             }
 			
-            if (socket_.Poll(100000, SelectMode.SelectRead))
+            if (socket_.Poll(_waitingForRead, SelectMode.SelectRead))
             {
 	           if(socket_ == null || socket_.Connected == false) 
 				{
