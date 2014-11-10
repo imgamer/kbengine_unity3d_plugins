@@ -132,10 +132,12 @@ START_RUN:
 			
 			app = this;
 
-            // 注册事件
-            installEvents();
-            
-            // 允许持久化KBE(例如:协议，entitydef等)
+			Message.bindFixedMessage();
+
+			// 注册事件
+			installEvents();
+
+			// 允许持久化KBE(例如:协议，entitydef等)
             if(persistentDataPath != "")
          	   _persistentInofs = new PersistentInofs(persistentDataPath);
         }
@@ -160,17 +162,6 @@ START_RUN:
         	return _networkInterface;
         }
         
-		public void initNetworkInterface( NetworkInterface networkInterface)
-		{
-			if (_networkInterface != null)
-				throw new System.InvalidOperationException( this + "::Active(), I was actived, may be somewhere has logic error." );
-
-			if (networkInterface == null)
-				throw new System.NotSupportedException( this + "::Active(), I was actived, may be somewhere has logic error." );
-
-			_networkInterface = networkInterface;
-		}
-
         public byte[] serverdatas()
         {
         	return _serverdatas;
@@ -224,7 +215,7 @@ START_RUN:
 			spaceResPath = "";
 			isLoadedGeometry = false;
 			
-			_networkInterface.reset();
+			_networkInterface = new NetworkInterface( this );
 			
 			_spacedatas.Clear();
 		}
@@ -239,11 +230,14 @@ START_RUN:
 			return Regex.IsMatch(strEmail, @"^([\w-\.]+)@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.)|(([\w-]+\.)+))([a-zA-Z]{2,4}|[0-9]{1,3})(\]?)$"); 
 		}  
 		
-		public void processOnce()
+		public virtual void process()
 		{
 			Event.processInEvents();
-			_networkInterface.process();
-			sendTick();
+			if (_networkInterface != null)
+			{
+				_networkInterface.process();
+				sendTick();
+			}
 		}
 		
 		public Entity player(){
@@ -298,6 +292,7 @@ START_RUN:
 		
 		public void hello()
 		{
+			Dbg.INFO_MSG(string.Format("KBEngine::hello(), will send helo message to {0}", currserver));
 			Bundle bundle = new Bundle();
 			if(currserver == "loginapp")
 				bundle.newMessage(Message.messages["Loginapp_hello"]);
@@ -363,29 +358,15 @@ START_RUN:
 			KBEngineApp.app.username = username;
 			KBEngineApp.app.password = password;
 			
-			if(!KBEngineApp.app.login_loginapp(true))
-			{
-				Dbg.ERROR_MSG("login: connect is error!");
-				return;
-			}
+			KBEngineApp.app.login_loginapp(true);
 		}
 		
-		public bool login_loginapp(bool noconnect)
+		public void login_loginapp(bool noconnect)
 		{
 			if(noconnect)
 			{
 				reset();
-				if(!_networkInterface.connect(_ip, _port))
-				{
-					Dbg.ERROR_MSG(string.Format("KBEngine::login_loginapp(): connect {0}:{1} is error!", _ip, _port));  
-					return false;
-				}
-				
-				currserver = "loginapp";
-				currstate = "login";
-			
-				hello();
-				Dbg.DEBUG_MSG(string.Format("KBEngine::login_loginapp(): connect {0}:{1} is successfylly!", _ip, _port));
+				_networkInterface.connect(_ip, _port, _login_loginapp_callback, null);
 			}
 			else
 			{
@@ -398,10 +379,23 @@ START_RUN:
 				bundle.writeString(password);
 				bundle.send(_networkInterface);
 			}
-			
-			return true;
 		}
-		
+
+		private void _login_loginapp_callback(string ip, int port, bool success, object userData)
+		{
+			if (!success)
+			{
+				Dbg.ERROR_MSG(string.Format("KBEngine::login_loginapp(): connect {0}:{1} is error!", ip, port));  
+				return;
+			}
+
+			currserver = "loginapp";
+			currstate = "login";
+			
+			hello();
+			Dbg.DEBUG_MSG(string.Format("KBEngine::login_loginapp(): connect {0}:{1} is successfylly!", ip, port));
+		}
+
 		private void onLogin_loginapp()
 		{
 			if(!loginappMessageImported_)
@@ -418,22 +412,14 @@ START_RUN:
 			}
 		}
 		
-		public bool login_baseapp(bool noconnect)
+		public void login_baseapp(bool noconnect)
 		{  
 			if(noconnect)
 			{
-				Event.fireAll("login_baseapp", new object[]{});
-				if(!_networkInterface.connect(baseappIP, baseappPort))
-				{
-					Dbg.ERROR_MSG(string.Format("KBEngine::login_baseapp(): connect {0}:{1} is error!", baseappIP, baseappPort));
-					return false;
-				}
-				
-				currserver = "baseapp";
-				currstate = "";
-			
-				hello();
-				Dbg.DEBUG_MSG(string.Format("KBEngine::login_baseapp(): connect {0}:{1} is successfully!", baseappIP, baseappPort));
+				if (_networkInterface != null)
+					_networkInterface.close();
+				_networkInterface = new NetworkInterface( this );
+				_networkInterface.connect(baseappIP, baseappPort, _login_baseapp_callback, null);
 			}
 			else
 			{
@@ -443,8 +429,21 @@ START_RUN:
 				bundle.writeString(password);
 				bundle.send(_networkInterface);
 			}
-			
-			return true;
+		}
+
+		private void _login_baseapp_callback(string ip, int port, bool success, object userData)
+		{
+			if (!success)
+			{
+				Dbg.ERROR_MSG(string.Format("KBEngine::login_baseapp(): connect {0}:{1} is error!", ip, port));
+				return;
+			}
+
+			currserver = "baseapp";
+			currstate = "";
+
+			hello();
+			Dbg.DEBUG_MSG(string.Format("KBEngine::login_baseapp(): connect {0}:{1} is successfully!", ip, port));
 		}
 	
 		private void onLogin_baseapp()
@@ -463,17 +462,22 @@ START_RUN:
 			}
 		}
 		
-		public bool relogin_baseapp()
+		public void relogin_baseapp()
 		{  
 			Event.fireAll("onRelogin_baseapp", new object[]{});
-			if(!_networkInterface.connect(baseappIP, baseappPort))
+			_networkInterface.connect(baseappIP, baseappPort, _relogin_baseapp_callback, null);
+		}
+
+		private void _relogin_baseapp_callback(string ip, int port, bool success, object userData)
+		{
+			if (!success)
 			{
-				Dbg.ERROR_MSG(string.Format("KBEngine::relogin_baseapp(): connect {0}:{1} is error!", baseappIP, baseappPort));
-				return false;
+				Dbg.ERROR_MSG(string.Format("KBEngine::relogin_baseapp(): connect {0}:{1} is error!", ip, port));
+				return;
 			}
 			
-			Dbg.DEBUG_MSG(string.Format("KBEngine::relogin_baseapp(): connect {0}:{1} is successfully!", baseappIP, baseappPort));
-
+			Dbg.DEBUG_MSG(string.Format("KBEngine::relogin_baseapp(): connect {0}:{1} is successfully!", ip, port));
+			
 			Bundle bundle = new Bundle();
 			bundle.newMessage(Message.messages["Baseapp_reLoginGateway"]);
 			bundle.writeString(username);
@@ -481,17 +485,23 @@ START_RUN:
 			bundle.writeUint64(entity_uuid);
 			bundle.writeInt32(entity_id);
 			bundle.send(_networkInterface);
-			return true;
 		}
-		
-		public bool autoImportMessagesFromServer(bool isLoginapp)
+
+		public void autoImportMessagesFromServer(bool isLoginapp)
 		{  
 			reset();
-			if(!_networkInterface.connect(_ip, _port))
+			_networkInterface.connect(_ip, _port, _autoImportMessagesFromServerCallback, isLoginapp);
+		}
+
+		private void _autoImportMessagesFromServerCallback(string ip, int port, bool success, object userData)
+		{
+			if (!success)
 			{
-				Dbg.ERROR_MSG(string.Format("KBEngine::autoImportMessagesFromServer(): connect {0}:{1} is error!", _ip, _port));
-				return false;
+				Dbg.ERROR_MSG(string.Format("KBEngine::autoImportMessagesFromServer(): connect {0}:{1} is error!", ip, port));
+				return;
 			}
+
+			bool isLoginapp = (bool)userData;
 
 			if(isLoginapp)
 			{
@@ -527,8 +537,7 @@ START_RUN:
 				}
 			}
 			
-			Dbg.DEBUG_MSG(string.Format("KBEngine::autoImportMessagesFromServer(): connect {0}:{1} is successfully!", _ip, _port));
-			return true;
+			Dbg.DEBUG_MSG(string.Format("KBEngine::autoImportMessagesFromServer(): connect {0}:{1} is successfully!", ip, port));
 		}
 	
 		public bool importMessagesFromMemoryStream(byte[] loginapp_clientMessages, byte[] baseapp_clientMessages, byte[] entitydefMessages, byte[] serverErrorsDescr)
@@ -1020,19 +1029,12 @@ START_RUN:
 			}
 		}
 			
-		public bool resetpassword_loginapp(bool noconnect)
+		public void resetpassword_loginapp(bool noconnect)
 		{
 			if(noconnect)
 			{
 				reset();
-				if(!_networkInterface.connect(_ip, _port))
-				{
-					Dbg.ERROR_MSG(string.Format("KBEngine::resetpassword_loginapp(): connect {0}:{1} is error!", _ip, _port));
-					return false;
-				}
-				
-				onOpenLoginapp_resetpassword();
-				Dbg.DEBUG_MSG(string.Format("KBEngine::resetpassword_loginapp(): connect {0}:{1} is successfylly!", _ip, _port)); 
+				_networkInterface.connect(_ip, _port, _resetpassword_loginapp_callback, null);
 			}
 			else
 			{
@@ -1041,10 +1043,20 @@ START_RUN:
 				bundle.writeString(username);
 				bundle.send(_networkInterface);
 			}
-			
-			return true;
 		}
-		
+
+		private void _resetpassword_loginapp_callback(string ip, int port, bool success, object userData)
+		{
+			if (!success)
+			{
+				Dbg.ERROR_MSG(string.Format("KBEngine::resetpassword_loginapp(): connect {0}:{1} is error!", ip, port));
+				return;
+			}
+			
+			onOpenLoginapp_resetpassword();
+			Dbg.DEBUG_MSG(string.Format("KBEngine::resetpassword_loginapp(): connect {0}:{1} is successfylly!", ip, port)); 
+		}
+
 		public void onOpenLoginapp_createAccount()
 		{  
 			Dbg.DEBUG_MSG("KBEngine::onOpenLoginapp_createAccount: successfully!");
@@ -1069,26 +1081,15 @@ START_RUN:
 			KBEngineApp.app.username = username;
 			KBEngineApp.app.password = password;
 			
-			if(!KBEngineApp.app.createAccount_loginapp(true))
-			{
-				Dbg.ERROR_MSG("createAccount: connect is error!");
-				return;
-			}
+			KBEngineApp.app.createAccount_loginapp(true);
 		}
 
-		public bool createAccount_loginapp(bool noconnect)
+		public void createAccount_loginapp(bool noconnect)
 		{
 			if(noconnect)
 			{
 				reset();
-				if(!_networkInterface.connect(_ip, _port))
-				{
-					Dbg.ERROR_MSG(string.Format("KBEngine::createAccount_loginapp(): connect {0}:{1} is error!", _ip, _port));
-					return false;
-				}
-				
-				onOpenLoginapp_createAccount();
-				Dbg.DEBUG_MSG(string.Format("KBEngine::createAccount_loginapp(): connect {0}:{1} is successfylly!", _ip, _port));
+				_networkInterface.connect(_ip, _port, _createAccount_loginapp_callback, null);
 			}
 			else
 			{
@@ -1099,10 +1100,20 @@ START_RUN:
 				bundle.writeBlob(new byte[0]);
 				bundle.send(_networkInterface);
 			}
-			
-			return true;
 		}
-		
+
+		private void _createAccount_loginapp_callback(string ip, int port, bool success, object userData)
+		{
+			if (!success)
+			{
+				Dbg.ERROR_MSG(string.Format("KBEngine::createAccount_loginapp(): connect {0}:{1} is error!", ip, port));
+				return;
+			}
+			
+			onOpenLoginapp_createAccount();
+			Dbg.DEBUG_MSG(string.Format("KBEngine::createAccount_loginapp(): connect {0}:{1} is successfylly!", ip, port));
+		}
+
 		public void bindEMail_baseapp(string emailaddress)
 		{  
 			Bundle bundle = new Bundle();
@@ -2113,19 +2124,17 @@ START_RUN:
 
 		public KBEngineAppThread(string persistentDataPath, string ip, UInt16 port, sbyte clientType) : base( persistentDataPath, ip, port, clientType )
 		{
-			initNetworkInterface( new NetworkInterface(this, 100000) );
-			
 			kbethread = new KBEThread(this);
 			
 			_t = new Thread(new ThreadStart(kbethread.run));
 			_t.Start();
 		}
 		
-		public void process()
+		public override void process()
 		{
 			while(!isbreak)
 			{
-				processOnce();
+				base.process();
 			}
 			
 			Dbg.WARNING_MSG("KBEngineAppThread::process(): break!");
@@ -2149,14 +2158,6 @@ START_RUN:
 			_t = null;
 
 			base.destroy();
-		}
-	}
-	
-	public class KBEngineAppNoThread : KBEngineApp
-	{
-		public KBEngineAppNoThread(string persistentDataPath, string ip, UInt16 port, sbyte clientType) : base( persistentDataPath, ip, port, clientType )
-		{
-			initNetworkInterface( new NetworkInterface(this, 0) );
 		}
 	}
 }

@@ -25,9 +25,9 @@
 		{
 		}
 		
-		public void process(byte[] datas, MessageLength length)
+		public void process(byte[] datas, MessageLength offset, MessageLength length)
 		{
-			MessageLength totallen = 0;
+			MessageLength totallen = offset;
 			
 			while(length > 0 && expectSize > 0)
 			{
