@@ -38,6 +38,12 @@
 			_messageSender = new MessageSender( this );
         }
 
+		~NetworkInterface()
+		{
+			Dbg.INFO_MSG( "NetworkInterface::~NetworkInterface()" );
+			close();
+		}
+
 		public Socket sock()
 		{
 			return socket_;
@@ -304,11 +310,14 @@
 					Dbg.ERROR_MSG(string.Format("NetworkInterface::_processRecved(): buffer overflow. wptr = {0}, rptr = {1}, BytesTransferred = {2}", _wptr, _rptr, e.BytesTransferred));
 					_networkInterface.close();
 				}
-				_wptr = hopeWptr;
+				if (hopeWptr == _buffer.Length)
+					_wptr = 0;
+				else
+					_wptr = hopeWptr;
 			}
 			else
 			{
-				Dbg.WARNING_MSG( string.Format("NetworkInterface::_processRecved(): error found! SocketError: {0}, BytesTransferred: {1}", e.SocketError, e.BytesTransferred) );
+				Dbg.WARNING_MSG( string.Format("NetworkInterface::_processRecved(): error found! SocketError: {0}, BytesTransferred: {1}, wptr = {2}, rptr = {3}", e.SocketError, e.BytesTransferred, _wptr, _rptr) );
 				_networkInterface.close();
 			}
 
@@ -396,7 +405,7 @@
 				int c1 = _buffer.Length - _wptr;
 				Array.Copy( datas, 0, _buffer, _wptr, c1 );
 				Array.Copy( datas, c1, _buffer, 0, datas.Length - c1 );
-				_wptr = hopeWptr % datas.Length;
+				_wptr = hopeWptr % _buffer.Length;
 			}
 
 			return true;

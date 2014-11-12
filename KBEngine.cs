@@ -213,6 +213,8 @@ START_RUN:
 			spaceResPath = "";
 			isLoadedGeometry = false;
 			
+			if (_networkInterface != null)
+				_networkInterface.close();
 			_networkInterface = new NetworkInterface( this );
 			
 			_spacedatas.Clear();
