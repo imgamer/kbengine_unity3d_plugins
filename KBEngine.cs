@@ -105,7 +105,7 @@ START_RUN:
 		public Dictionary<Int32, Entity> entities = new Dictionary<Int32, Entity>();
 		private List<Int32> _entityIDAliasIDList = new List<Int32>();
 		private Dictionary<Int32, MemoryStream> _bufferedCreateEntityMessage = new Dictionary<Int32, MemoryStream>(); 
-		
+
 		public struct ServerErr
 		{
 			public string name;
@@ -126,6 +126,9 @@ START_RUN:
 		
         public KBEngineApp(string persistentDataPath, string ip, UInt16 port, sbyte clientType)
         {
+			if (app != null)
+				throw new Exception( "KBEngineApp instance duplicate!" );
+
 			_clientType = clientType;
 			_ip = ip;
 			_port = port;
@@ -219,7 +222,31 @@ START_RUN:
 			
 			_spacedatas.Clear();
 		}
+
+		public Int32 addTimer( float start, float interval, KBEngine.Timer.TimerCallback function, object userdata )
+		{
+
+			KBEngine.Timer t = new KBEngine.Timer( start, interval, function, userdata );
+			return t.start();
+		}
+
+		public Int32 addTimer( float start, float interval, KBEngine.Timer.TimerCallback function )
+		{
+			KBEngine.Timer t = new KBEngine.Timer( start, interval, function, null );
+			return t.start();
+		}
 		
+		public Int32 addTimer( float start, KBEngine.Timer.TimerCallback function )
+		{
+			KBEngine.Timer t = new KBEngine.Timer( start, 0.0f, function, null );
+			return t.start();
+		}
+
+		public void cancelTimer( Int32 timerID )
+		{
+			Task.remove( timerID );
+		}
+
 		public string getIP()
 		{
 			return _ip;
@@ -232,6 +259,7 @@ START_RUN:
 		
 		public virtual void process()
 		{
+			Task.updateAll();
 			Event.processInEvents();
 			if (_networkInterface != null)
 			{
