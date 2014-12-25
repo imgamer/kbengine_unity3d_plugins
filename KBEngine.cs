@@ -11,71 +11,74 @@
 	using MessageID = System.UInt16;
 	using MessageLength = System.UInt16;
 	
-    public class KBEThread
-    {
-
-        KBEngineAppThread app_;
-		public bool over = false;
+	/*
+		这是KBEngine插件的核心模块
+		包括网络创建、持久化协议、entities的管理、以及引起对外可调用接口。
 		
-		public KBEThread(KBEngineAppThread app)
-        {
-            this.app_ = app;
-        }
-
-        public void run()
-        {
-			Dbg.INFO_MSG("KBEThread::run()");
-			int count = 0;
-START_RUN:
-			over = false;
-
-            try
-            {
-                this.app_.process();
-                count = 0;
-            }
-            catch (Exception e)
-            {
-                Dbg.ERROR_MSG(e.ToString());
-                Dbg.INFO_MSG("KBEThread::try run:" + count);
-                
-                count ++;
-                if(count < 10)
-                	goto START_RUN;
-            }
-			
-			over = true;
-			Dbg.INFO_MSG("KBEThread::end()");
-        }
-    }
-
+		一些可以参考的地方:
+		http://www.kbengine.org/docs/programming/clientsdkprogramming.html
+		http://www.kbengine.org/docs/programming/kbe_message_format.html
+		
+		http://www.kbengine.org/cn/docs/programming/clientsdkprogramming.html
+		http://www.kbengine.org/cn/docs/programming/kbe_message_format.html
+	*/
 	public class KBEngineApp
 	{
 		public static KBEngineApp app = null;
 		private NetworkInterface _networkInterface = null;
+        
+        KBEngineArgs _args = null;
+        
+    	// 客户端的类别
+    	// http://www.kbengine.org/docs/programming/clientsdkprogramming.html
+    	// http://www.kbengine.org/cn/docs/programming/clientsdkprogramming.html
+		public enum CLIENT_TYPE
+		{
+			// Mobile(Phone, Pad)
+			CLIENT_TYPE_MOBILE				= 1,
+
+			// Windows/Linux/Mac Application program
+			// Contains the Python-scripts, entitydefs parsing and check entitydefs-MD5, Native
+			CLIENT_TYPE_PC					= 2,
+
+			// Web，HTML5，Flash
+			// not contain Python-scripts and entitydefs analysis, can be imported protocol from network
+			CLIENT_TYPE_BROWSER				= 3,
+
+			// bots(Contains the Python-scripts, entitydefs parsing and check entitydefs-MD5, Native)
+			CLIENT_TYPE_BOTS				= 4,
+
+			// Mini-Client
+			// Allowing does not contain Python-scripts and entitydefs analysis, can be imported protocol from network
+			CLIENT_TYPE_MINI				= 5,
+		};
 		
         public string username = "kbengine";
         public string password = "123456";
         
+        // 是否正在加载本地消息协议
         private static bool loadingLocalMessages_ = false;
         
+        // 消息协议是否已经导入了
 		private static bool loginappMessageImported_ = false;
 		private static bool baseappMessageImported_ = false;
 		private static bool entitydefImported_ = false;
 		private static bool isImportServerErrorsDescr_ = false;
 		
-		private string _ip = "127.0.0.1";
-		private UInt16 _port = 20013;
-		
+		// 服务端分配的baseapp地址
 		public string baseappIP = "";
 		public UInt16 baseappPort = 0;
 		
-		public string currserver = "loginapp";
-		public string currstate = "create";
+		// 当前状态
+		public string currserver = "";
+		public string currstate = "";
 		
+		// 服务端下行以及客户端上行用于登录时处理的账号绑定的二进制信息
+		// 该信息由用户自己进行扩展
 		private byte[] _serverdatas = new byte[0];
 		private byte[] _clientdatas = new byte[0];
 		
+		// 服务端与客户端的版本号以及协议MD5
 		public string serverVersion = "";
 		public string clientVersion = "0.2.0";
 		public string serverScriptVersion = "";
@@ -83,29 +86,33 @@ START_RUN:
 		public string serverProtocolMD5 = "";
 		public string serverEntitydefMD5 = "";
 		
-		// 持久化插件信息
+		// 持久化插件信息， 例如：从服务端导入的协议可以持久化到本地，下次登录版本不发生改变
+		// 可以直接从本地加载来提供登录速度
 		private PersistentInofs _persistentInofs = null;
 		
-		// Reference: http://www.kbengine.org/docs/programming/clientsdkprogramming.html, client types
-		private sbyte _clientType = 5;
-		
-		// Allow synchronization role position information to the server
-		public bool syncPlayer = true;
-		
+		// 当前玩家的实体id与实体类别
 		public UInt64 entity_uuid = 0;
 		public Int32 entity_id = 0;
 		public string entity_type = "";
 		
+		// 当前玩家最后一次同步到服务端的位置与朝向与服务端最后一次同步过来的位置
 		private Vector3 _entityLastLocalPos = new Vector3(0f, 0f, 0f);
 		private Vector3 _entityLastLocalDir = new Vector3(0f, 0f, 0f);
 		private Vector3 _entityServerPos = new Vector3(0f, 0f, 0f);
 		
+		// space的数据，具体看API手册关于spaceData
+		// https://github.com/kbengine/kbengine/tree/master/docs/api
 		private Dictionary<string, string> _spacedatas = new Dictionary<string, string>();
 		
+		// 所有实体都保存于这里， 请参看API手册关于entities部分
+		// https://github.com/kbengine/kbengine/tree/master/docs/api
 		public Dictionary<Int32, Entity> entities = new Dictionary<Int32, Entity>();
+		
+		// 在玩家AOI范围小于256个实体时我们可以通过一字节索引来找到entity
 		private List<Int32> _entityIDAliasIDList = new List<Int32>();
 		private Dictionary<Int32, MemoryStream> _bufferedCreateEntityMessage = new Dictionary<Int32, MemoryStream>(); 
-
+		
+		// 描述服务端返回的错误信息
 		public struct ServerErr
 		{
 			public string name;
@@ -113,38 +120,55 @@ START_RUN:
 			public UInt16 id;
 		}
 		
+		// 所有服务端错误码对应的错误描述
 		public static Dictionary<UInt16, ServerErr> serverErrs = new Dictionary<UInt16, ServerErr>(); 
 		
-		private System.DateTime _lastticktime_ = System.DateTime.Now;
-		private System.DateTime _lastUpdateToServerTime_ = System.DateTime.Now;
+		private System.DateTime _lastticktime = System.DateTime.Now;
+		private System.DateTime _lastUpdateToServerTime = System.DateTime.Now;
 		
+		// 玩家当前所在空间的id， 以及空间对应的资源
 		public UInt32 spaceID = 0;
 		public string spaceResPath = "";
 		public bool isLoadedGeometry = false;
 		
+		// entityDef管理模块
 		public static EntityDef entityDef = new EntityDef();
 		
-        public KBEngineApp(string persistentDataPath, string ip, UInt16 port, sbyte clientType)
+		// 按照标准，每个客户端部分都应该包含这个属性
+		public const string component = "client"; 
+		
+        public KBEngineApp(KBEngineArgs args)
         {
 			if (app != null)
-				throw new Exception( "KBEngineApp instance duplicate!" );
-
-			_clientType = clientType;
-			_ip = ip;
-			_port = port;
+				throw new Exception("Only one instance of KBEngineApp!");
 			
 			app = this;
-
-			Message.bindFixedMessage();
-
-			// 注册事件
-			installEvents();
-
-			// 允许持久化KBE(例如:协议，entitydef等)
-            if(persistentDataPath != "")
-         	   _persistentInofs = new PersistentInofs(persistentDataPath);
+			
+			initialize(args);
         }
 
+		public virtual bool initialize(KBEngineArgs args)
+		{
+			_args = args;
+			
+        	initNetwork();
+
+            // 注册事件
+            installEvents();
+            
+            // 允许持久化KBE(例如:协议，entitydef等)
+            if(args.persistentDataPath != "")
+         	   _persistentInofs = new PersistentInofs(args.persistentDataPath);
+         	
+         	return true;
+		}
+		
+		void initNetwork()
+		{
+			Message.bindFixedMessage();
+        	_networkInterface = new NetworkInterface();
+		}
+		
 		void installEvents()
 		{
 			Event.registerIn("createAccount", this, "createAccount");
@@ -152,6 +176,11 @@ START_RUN:
 			Event.registerIn("relogin_baseapp", this, "relogin_baseapp");
 		}
 	
+		public KBEngineArgs getInitArgs()
+		{
+			return _args;
+		}
+		
         public virtual void destroy()
         {
         	Dbg.WARNING_MSG("KBEngine::destroy()");
@@ -159,9 +188,12 @@ START_RUN:
         	reset();
         	KBEngine.Event.deregisterIn(this);
         	resetMessages();
+        	
+        	KBEngineApp.app = null;
         }
         
-        public NetworkInterface networkInterface(){
+        public NetworkInterface networkInterface()
+        {
         	return _networkInterface;
         }
         
@@ -178,7 +210,6 @@ START_RUN:
         public void resetMessages()
         {
 	        loadingLocalMessages_ = false;
-	        
 			loginappMessageImported_ = false;
 			baseappMessageImported_ = false;
 			entitydefImported_ = false;
@@ -190,14 +221,14 @@ START_RUN:
 			Dbg.DEBUG_MSG("KBEngine::resetMessages()");
         }
         
-		public void reset()
+		public virtual void reset()
 		{
 			KBEngine.Event.clearFiredEvents();
 			
 			clearEntities(true);
 			
-			currserver = "loginapp";
-			currstate = "create";
+			currserver = "";
+			currstate = "";
 			_serverdatas = new byte[0];
 			_clientdatas = new byte[0];
 			serverVersion = "";
@@ -210,15 +241,15 @@ START_RUN:
 			_entityIDAliasIDList.Clear();
 			_bufferedCreateEntityMessage.Clear();
 			
-			_lastticktime_ = System.DateTime.Now;
-			_lastUpdateToServerTime_ = System.DateTime.Now;
+			_lastticktime = System.DateTime.Now;
+			_lastUpdateToServerTime = System.DateTime.Now;
+			
 			spaceID = 0;
 			spaceResPath = "";
 			isLoadedGeometry = false;
 			
-			if (_networkInterface != null)
-				_networkInterface.close();
-			_networkInterface = new NetworkInterface( this );
+			_networkInterface.reset();
+			_networkInterface = new NetworkInterface();
 			
 			_spacedatas.Clear();
 		}
@@ -246,29 +277,35 @@ START_RUN:
 		{
 			Task.remove( timerID );
 		}
-
-		public string getIP()
-		{
-			return _ip;
-		}
 		
 		public static bool validEmail(string strEmail) 
 		{ 
-			return Regex.IsMatch(strEmail, @"^([\w-\.]+)@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.)|(([\w-]+\.)+))([a-zA-Z]{2,4}|[0-9]{1,3})(\]?)$"); 
+			return Regex.IsMatch(strEmail, @"^([\w-\.]+)@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.)
+				|(([\w-]+\.)+))([a-zA-Z]{2,4}|[0-9]{1,3})(\]?)$"); 
 		}  
 		
+		/*
+			插件的主循环处理函数
+		*/
 		public virtual void process()
 		{
 			Task.updateAll();
+		
+			// 处理外层抛入的事件
 			Event.processInEvents();
-			if (_networkInterface != null)
-			{
-				_networkInterface.process();
-				sendTick();
-			}
+			
+			// 向服务端发送心跳以及同步角色信息到服务端
+			sendTick();
+			
+			// 处理网络
+			_networkInterface.process();
 		}
 		
-		public Entity player(){
+		/*
+			当前玩家entity
+		*/
+		public Entity player()
+		{
 			Entity e;
 			if(entities.TryGetValue(entity_id, out e))
 				return e;
@@ -276,6 +313,9 @@ START_RUN:
 			return null;
 		}
 
+		/*
+			向服务端发送心跳以及同步角色信息到服务端
+		*/
 		public void sendTick()
 		{
 			if(!_networkInterface.valid())
@@ -284,7 +324,9 @@ START_RUN:
 			if(!loginappMessageImported_ && !baseappMessageImported_)
 				return;
 			
-			TimeSpan span = DateTime.Now - _lastticktime_; 
+			TimeSpan span = DateTime.Now - _lastticktime; 
+			
+			// 更新玩家的位置与朝向到服务端
 			updatePlayerToServer();
 			
 			if(span.Seconds > 15)
@@ -314,13 +356,15 @@ START_RUN:
 					}
 				}
 				
-				_lastticktime_ = System.DateTime.Now;
+				_lastticktime = System.DateTime.Now;
 			}
 		}
 		
+		/*
+			与服务端握手，与任何一个进程连接之后应该第一时间进行握手
+		*/
 		public void hello()
 		{
-			Dbg.INFO_MSG(string.Format("KBEngine::hello(), will send helo message to {0}", currserver));
 			Bundle bundle = new Bundle();
 			if(currserver == "loginapp")
 				bundle.newMessage(Message.messages["Loginapp_hello"]);
@@ -333,6 +377,36 @@ START_RUN:
 			bundle.send(_networkInterface);
 		}
 
+		/*
+			握手之后服务端的回调
+		*/
+		public void Client_onHelloCB(MemoryStream stream)
+		{
+			serverVersion = stream.readString();
+			serverScriptVersion = stream.readString();
+			serverProtocolMD5 = stream.readString();
+			serverEntitydefMD5 = stream.readString();
+			Int32 ctype = stream.readInt32();
+			
+			Dbg.DEBUG_MSG("KBEngine::Client_onHelloCB: verInfo(" + serverVersion 
+				+ "), scriptVersion("+ serverScriptVersion + "), srvProtocolMD5("+ serverProtocolMD5 
+				+ "), srvEntitydefMD5("+ serverEntitydefMD5 + "), + ctype(" + ctype + ")!");
+			
+			onServerDigest();
+			
+			if(currserver == "baseapp")
+			{
+				onLogin_baseapp();
+			}
+			else
+			{
+				onLogin_loginapp();
+			}
+		}
+		
+		/*
+			引擎版本不匹配
+		*/
 		public void Client_onVersionNotMatch(MemoryStream stream)
 		{
 			serverVersion = stream.readString();
@@ -341,6 +415,9 @@ START_RUN:
 			Event.fireAll("onVersionNotMatch", new object[]{clientVersion, serverVersion});
 		}
 
+		/*
+			脚本版本不匹配
+		*/
 		public void Client_onScriptVersionNotMatch(MemoryStream stream)
 		{
 			serverScriptVersion = stream.readString();
@@ -349,12 +426,18 @@ START_RUN:
 			Event.fireAll("onScriptVersionNotMatch", new object[]{clientScriptVersion, serverScriptVersion});
 		}
 		
+		/*
+			被服务端踢出
+		*/
 		public void Client_onKicked(UInt16 failedcode)
 		{
 			Dbg.DEBUG_MSG("Client_onKicked: failedcode=" + failedcode);
 			Event.fireAll("onKicked", new object[]{failedcode});
 		}
 		
+		/*
+			服务端错误描述导入了
+		*/
 		public void Client_onImportServerErrorsDescr(MemoryStream stream)
 		{
 			byte[] datas = new byte[stream.wpos - stream.rpos];
@@ -363,6 +446,9 @@ START_RUN:
 			onImportServerErrorsDescr (stream);
 		}
 
+		/*
+			服务端错误描述导入了
+		*/
 		public void onImportServerErrorsDescr(MemoryStream stream)
 		{
 			UInt16 size = stream.readUint16();
@@ -381,49 +467,55 @@ START_RUN:
 			}
 		}
 		
+		/*
+			登录到服务端，必须登录完成loginapp与网关(baseapp)，登录流程才算完毕
+		*/
 		public void login(string username, string password)
 		{
 			KBEngineApp.app.username = username;
 			KBEngineApp.app.password = password;
-			
 			KBEngineApp.app.login_loginapp(true);
 		}
 		
+		/*
+			登录到服务端(loginapp), 登录成功后还必须登录到网关(baseapp)登录流程才算完毕
+		*/
 		public void login_loginapp(bool noconnect)
 		{
 			if(noconnect)
 			{
 				reset();
-				_networkInterface.connect(_ip, _port, _login_loginapp_callback, null);
+				_networkInterface.connectTo(_args.ip, _args.port, onConnectTo_loginapp_callback, null);
 			}
 			else
 			{
 				Dbg.DEBUG_MSG("KBEngine::login_loginapp(): send login! username=" + username);
 				Bundle bundle = new Bundle();
 				bundle.newMessage(Message.messages["Loginapp_login"]);
-				bundle.writeInt8(_clientType); // clientType
+				bundle.writeInt8((sbyte)_args.clientType); // clientType
 				bundle.writeBlob(new byte[0]);
 				bundle.writeString(username);
 				bundle.writeString(password);
 				bundle.send(_networkInterface);
 			}
 		}
-
-		private void _login_loginapp_callback(string ip, int port, bool success, object userData)
+		
+		private void onConnectTo_loginapp_callback(string ip, int port, bool success, object userData)
 		{
-			if (!success)
+			if(!success)
 			{
 				Dbg.ERROR_MSG(string.Format("KBEngine::login_loginapp(): connect {0}:{1} is error!", ip, port));  
 				return;
 			}
-
+			
 			currserver = "loginapp";
 			currstate = "login";
 			
-			hello();
 			Dbg.DEBUG_MSG(string.Format("KBEngine::login_loginapp(): connect {0}:{1} is successfylly!", ip, port));
-		}
 
+			hello();
+		}
+		
 		private void onLogin_loginapp()
 		{
 			if(!loginappMessageImported_)
@@ -440,14 +532,18 @@ START_RUN:
 			}
 		}
 		
+		/*
+			登录到服务端，登录到网关(baseapp)
+		*/
 		public void login_baseapp(bool noconnect)
 		{  
 			if(noconnect)
 			{
-				if (_networkInterface != null)
-					_networkInterface.close();
-				_networkInterface = new NetworkInterface( this );
-				_networkInterface.connect(baseappIP, baseappPort, _login_baseapp_callback, null);
+				Event.fireAll("login_baseapp", new object[]{});
+				
+				_networkInterface.reset();
+				_networkInterface = new NetworkInterface();
+				_networkInterface.connectTo(baseappIP, baseappPort, onConnectTo_baseapp_callback, null);
 			}
 			else
 			{
@@ -459,21 +555,22 @@ START_RUN:
 			}
 		}
 
-		private void _login_baseapp_callback(string ip, int port, bool success, object userData)
+		private void onConnectTo_baseapp_callback(string ip, int port, bool success, object userData)
 		{
-			if (!success)
+			if(!success)
 			{
 				Dbg.ERROR_MSG(string.Format("KBEngine::login_baseapp(): connect {0}:{1} is error!", ip, port));
 				return;
 			}
-
+			
 			currserver = "baseapp";
 			currstate = "";
+			
+			Dbg.DEBUG_MSG(string.Format("KBEngine::login_baseapp(): connect {0}:{1} is successfully!", ip, port));
 
 			hello();
-			Dbg.DEBUG_MSG(string.Format("KBEngine::login_baseapp(): connect {0}:{1} is successfully!", ip, port));
 		}
-	
+		
 		private void onLogin_baseapp()
 		{
 			if(!baseappMessageImported_)
@@ -490,22 +587,27 @@ START_RUN:
 			}
 		}
 		
+		/*
+			重登录到网关(baseapp)
+			一些移动类应用容易掉线，可以使用该功能快速的重新与服务端建立通信
+		*/
 		public void relogin_baseapp()
 		{  
 			Event.fireAll("onRelogin_baseapp", new object[]{});
-			_networkInterface.connect(baseappIP, baseappPort, _relogin_baseapp_callback, null);
+			_networkInterface.connectTo(baseappIP, baseappPort, onReConnectTo_baseapp_callback, null);
 		}
 
-		private void _relogin_baseapp_callback(string ip, int port, bool success, object userData)
+		private void onReConnectTo_baseapp_callback(string ip, int port, bool success, object userData)
 		{
-			if (!success)
+			if(!success)
 			{
 				Dbg.ERROR_MSG(string.Format("KBEngine::relogin_baseapp(): connect {0}:{1} is error!", ip, port));
 				return;
 			}
 			
-			Dbg.DEBUG_MSG(string.Format("KBEngine::relogin_baseapp(): connect {0}:{1} is successfully!", ip, port));
 			
+			Dbg.DEBUG_MSG(string.Format("KBEngine::relogin_baseapp(): connect {0}:{1} is successfully!", ip, port));
+
 			Bundle bundle = new Bundle();
 			bundle.newMessage(Message.messages["Baseapp_reLoginGateway"]);
 			bundle.writeString(username);
@@ -514,24 +616,25 @@ START_RUN:
 			bundle.writeInt32(entity_id);
 			bundle.send(_networkInterface);
 		}
-
+		
+		/*
+			自动完成协议导入的所有流程
+		*/
 		public void autoImportMessagesFromServer(bool isLoginapp)
 		{  
 			reset();
-			_networkInterface.connect(_ip, _port, _autoImportMessagesFromServerCallback, isLoginapp);
+			_networkInterface.connectTo(_args.ip, _args.port, onConnectTo_autoImportMessagesFromServer_callback, isLoginapp);
 		}
 
-		private void _autoImportMessagesFromServerCallback(string ip, int port, bool success, object userData)
+		private void onConnectTo_autoImportMessagesFromServer_callback(string ip, int port, bool success, object isLoginapp)
 		{
-			if (!success)
+			if(!success)
 			{
 				Dbg.ERROR_MSG(string.Format("KBEngine::autoImportMessagesFromServer(): connect {0}:{1} is error!", ip, port));
 				return;
 			}
-
-			bool isLoginapp = (bool)userData;
-
-			if(isLoginapp)
+			
+			if((bool)isLoginapp)
 			{
 				currserver = "loginapp";
 				currstate = "autoimport";
@@ -565,33 +668,32 @@ START_RUN:
 				}
 			}
 			
-			Dbg.DEBUG_MSG(string.Format("KBEngine::autoImportMessagesFromServer(): connect {0}:{1} is successfully!", ip, port));
+			Dbg.DEBUG_MSG(string.Format("KBEngine::autoImportMessagesFromServer(): connect {0}:{1} is successfully!", _args.ip, _args.port));
 		}
-	
+		
+		/*
+			从二进制流导入消息协议
+		*/
 		public bool importMessagesFromMemoryStream(byte[] loginapp_clientMessages, byte[] baseapp_clientMessages, byte[] entitydefMessages, byte[] serverErrorsDescr)
 		{
 			loadingLocalMessages_ = true;
 			MemoryStream stream = new MemoryStream();
-			Array.Copy(loginapp_clientMessages, stream.data(), loginapp_clientMessages.Length);
-			stream.wpos = loginapp_clientMessages.Length;
+			stream.append(loginapp_clientMessages, (UInt32)0, (UInt32)loginapp_clientMessages.Length);
 			currserver = "loginapp";
 			onImportClientMessages(stream);
 
 			stream = new MemoryStream();
-			Array.Copy(baseapp_clientMessages, stream.data(), baseapp_clientMessages.Length);
-			stream.wpos = baseapp_clientMessages.Length;
+			stream.append(baseapp_clientMessages, (UInt32)0, (UInt32)baseapp_clientMessages.Length);
 			currserver = "baseapp";
 			onImportClientMessages(stream);
 			currserver = "loginapp";
 
 			stream = new MemoryStream();
-			Array.Copy(serverErrorsDescr, stream.data(), serverErrorsDescr.Length);
-			stream.wpos = serverErrorsDescr.Length;
+			stream.append(serverErrorsDescr, (UInt32)0, (UInt32)serverErrorsDescr.Length);
 			onImportServerErrorsDescr(stream);
 				
 			stream = new MemoryStream();
-			Array.Copy(entitydefMessages, stream.data(), entitydefMessages.Length);
-			stream.wpos = entitydefMessages.Length;
+			stream.append(entitydefMessages, (UInt32)0, (UInt32)entitydefMessages.Length);
 			onImportClientEntityDef(stream);
 
 			loadingLocalMessages_ = false;
@@ -600,10 +702,14 @@ START_RUN:
 			entitydefImported_ = true;
 			isImportServerErrorsDescr_ = true;
 		
+			currserver = "";
 			Dbg.DEBUG_MSG("KBEngine::importMessagesFromMemoryStream(): is successfully!");
 			return true;
 		}
 
+		/*
+			从二进制流导入消息协议完毕了
+		*/
 		private void onImportClientMessagesCompleted()
 		{
 			Dbg.DEBUG_MSG("KBEngine::onImportClientMessagesCompleted: successfully! currserver=" + 
@@ -659,6 +765,9 @@ START_RUN:
 			}
 		}
 		
+		/*
+			从二进制流创建entitydef支持的数据类型
+		*/
 		public void createDataTypeFromStream(MemoryStream stream, bool canprint)
 		{
 			UInt16 utype = stream.readUint16();
@@ -702,7 +811,7 @@ START_RUN:
 			EntityDef.iddatatypes[utype] = EntityDef.datatypes[name];
 			EntityDef.datatype2id[name] = EntityDef.datatype2id[valname];
 		}
-			
+
 		public void Client_onImportClientEntityDef(MemoryStream stream)
 		{
 			byte[] datas = new byte[stream.wpos - stream.rpos];
@@ -731,7 +840,7 @@ START_RUN:
 				}
 			}
 			
-			while(stream.opsize() > 0)
+			while(stream.length() > 0)
 			{
 				string scriptmethod_name = stream.readString();
 				UInt16 scriptUtype = stream.readUint16();
@@ -767,7 +876,16 @@ START_RUN:
 					
 					if(Class != null)
 					{
-						setmethod = Class.GetMethod("set_" + name);
+						try{
+							setmethod = Class.GetMethod("set_" + name);
+						}
+						catch (Exception e)
+						{
+							string err = "KBEngine::Client_onImportClientEntityDef: " + 
+								scriptmethod_name + ".set_" + name + ", error=" + e.ToString();
+							
+							throw new Exception(err);
+						}
 					}
 					
 					Property savedata = new Property();
@@ -817,7 +935,16 @@ START_RUN:
 					savedata.args = args;
 					
 					if(Class != null)
-						savedata.handler = Class.GetMethod(name);
+					{
+						try{
+							savedata.handler = Class.GetMethod(name);
+						}
+						catch (Exception e)
+						{
+							string err = "KBEngine::Client_onImportClientEntityDef: " + scriptmethod_name + "." + name + ", error=" + e.ToString();
+							throw new Exception(err);
+						}
+					}
 							
 					module.methods[name] = savedata;
 					
@@ -937,6 +1064,9 @@ START_RUN:
 				login_baseapp(false);
 		}
 
+		/*
+			通过错误id得到错误描述
+		*/
 		public string serverErr(UInt16 id)
 		{
 			ServerErr e;
@@ -949,6 +1079,9 @@ START_RUN:
 			return e.name + " [" + e.descr + "]";
 		}
 	
+		/*
+			从服务端返回的二进制流导入客户端消息协议
+		*/
 		public void Client_onImportClientMessages(MemoryStream stream)
 		{
 			byte[] datas = new byte[stream.wpos - stream.rpos];
@@ -1056,13 +1189,25 @@ START_RUN:
 				onImportClientMessagesCompleted();
 			}
 		}
-			
+
+		/*
+			重置密码, 通过loginapp
+		*/
+		public void reset_password(string username)
+		{
+			KBEngineApp.app.username = username;
+			resetpassword_loginapp(true);
+		}
+		
+		/*
+			重置密码, 通过loginapp
+		*/
 		public void resetpassword_loginapp(bool noconnect)
 		{
 			if(noconnect)
 			{
 				reset();
-				_networkInterface.connect(_ip, _port, _resetpassword_loginapp_callback, null);
+				_networkInterface.connectTo(_args.ip, _args.port, onConnectTo_resetpassword_callback, null);
 			}
 			else
 			{
@@ -1073,16 +1218,103 @@ START_RUN:
 			}
 		}
 
-		private void _resetpassword_loginapp_callback(string ip, int port, bool success, object userData)
+		private void onConnectTo_resetpassword_callback(string ip, int port, bool success, object userData)
 		{
-			if (!success)
+			if(!success)
 			{
 				Dbg.ERROR_MSG(string.Format("KBEngine::resetpassword_loginapp(): connect {0}:{1} is error!", ip, port));
 				return;
 			}
 			
-			onOpenLoginapp_resetpassword();
 			Dbg.DEBUG_MSG(string.Format("KBEngine::resetpassword_loginapp(): connect {0}:{1} is successfylly!", ip, port)); 
+			onOpenLoginapp_resetpassword();
+		}
+		
+		public void Client_onReqAccountResetPasswordCB(UInt16 failcode)
+		{
+			if(failcode != 0)
+			{
+				Dbg.ERROR_MSG("KBEngine::Client_onReqAccountResetPasswordCB: " + username + " is failed! code=" + failcode + "!");
+				return;
+			}
+	
+			Dbg.DEBUG_MSG("KBEngine::Client_onReqAccountResetPasswordCB: " + username + " is successfully!");
+		}
+		
+		/*
+			绑定Email，通过baseapp
+		*/
+		public void bind_email(string emailaddress)
+		{  
+			Bundle bundle = new Bundle();
+			bundle.newMessage(Message.messages["Baseapp_reqAccountBindEmail"]);
+			bundle.writeInt32(entity_id);
+			bundle.writeString(password);
+			bundle.writeString(emailaddress);
+			bundle.send(_networkInterface);
+		}
+
+		public void Client_onReqAccountBindEmailCB(UInt16 failcode)
+		{
+			if(failcode != 0)
+			{
+				Dbg.ERROR_MSG("KBEngine::Client_onReqAccountBindEmailCB: " + username + " is failed! code=" + failcode + "!");
+				return;
+			}
+
+			Dbg.DEBUG_MSG("KBEngine::Client_onReqAccountBindEmailCB: " + username + " is successfully!");
+		}
+		
+		/*
+			设置新密码，通过baseapp， 必须玩家登录在线操作所以是baseapp。
+		*/
+		public void new_password(string oldpassword, string newpassword)
+		{
+			Bundle bundle = new Bundle();
+			bundle.newMessage(Message.messages["Baseapp_reqAccountNewPassword"]);
+			bundle.writeInt32(entity_id);
+			bundle.writeString(oldpassword);
+			bundle.writeString(newpassword);
+			bundle.send(_networkInterface);
+		}
+
+		public void Client_onReqAccountNewPasswordCB(UInt16 failcode)
+		{
+			if(failcode != 0)
+			{
+				Dbg.ERROR_MSG("KBEngine::Client_onReqAccountNewPasswordCB: " + username + " is failed! code=" + failcode + "!");
+				return;
+			}
+	
+			Dbg.DEBUG_MSG("KBEngine::Client_onReqAccountNewPasswordCB: " + username + " is successfully!");
+		}
+
+		public void createAccount(string username, string password)
+		{
+			KBEngineApp.app.username = username;
+			KBEngineApp.app.password = password;
+			KBEngineApp.app.createAccount_loginapp(true);
+		}
+
+		/*
+			创建账号，通过loginapp
+		*/
+		public void createAccount_loginapp(bool noconnect)
+		{
+			if(noconnect)
+			{
+				reset();
+				_networkInterface.connectTo(_args.ip, _args.port, onConnectTo_createAccount_callback, null);
+			}
+			else
+			{
+				Bundle bundle = new Bundle();
+				bundle.newMessage(Message.messages["Loginapp_reqCreateAccount"]);
+				bundle.writeString(username);
+				bundle.writeString(password);
+				bundle.writeBlob(new byte[0]);
+				bundle.send(_networkInterface);
+			}
 		}
 
 		public void onOpenLoginapp_createAccount()
@@ -1104,64 +1336,21 @@ START_RUN:
 			}
 		}
 		
-		public void createAccount(string username, string password)
+		private void onConnectTo_createAccount_callback(string ip, int port, bool success, object userData)
 		{
-			KBEngineApp.app.username = username;
-			KBEngineApp.app.password = password;
-			
-			KBEngineApp.app.createAccount_loginapp(true);
-		}
-
-		public void createAccount_loginapp(bool noconnect)
-		{
-			if(noconnect)
-			{
-				reset();
-				_networkInterface.connect(_ip, _port, _createAccount_loginapp_callback, null);
-			}
-			else
-			{
-				Bundle bundle = new Bundle();
-				bundle.newMessage(Message.messages["Loginapp_reqCreateAccount"]);
-				bundle.writeString(username);
-				bundle.writeString(password);
-				bundle.writeBlob(new byte[0]);
-				bundle.send(_networkInterface);
-			}
-		}
-
-		private void _createAccount_loginapp_callback(string ip, int port, bool success, object userData)
-		{
-			if (!success)
+			if(!success)
 			{
 				Dbg.ERROR_MSG(string.Format("KBEngine::createAccount_loginapp(): connect {0}:{1} is error!", ip, port));
 				return;
 			}
 			
+			Dbg.DEBUG_MSG(string.Format("KBEngine::createAccount_loginapp(): connect {0}:{1} is successfylly!", ip, port)); 
 			onOpenLoginapp_createAccount();
-			Dbg.DEBUG_MSG(string.Format("KBEngine::createAccount_loginapp(): connect {0}:{1} is successfylly!", ip, port));
-		}
-
-		public void bindEMail_baseapp(string emailaddress)
-		{  
-			Bundle bundle = new Bundle();
-			bundle.newMessage(Message.messages["Baseapp_reqAccountBindEmail"]);
-			bundle.writeInt32(entity_id);
-			bundle.writeString(password);
-			bundle.writeString(emailaddress);
-			bundle.send(_networkInterface);
 		}
 		
-		public void newpassword_baseapp(string oldpassword, string newpassword)
-		{
-			Bundle bundle = new Bundle();
-			bundle.newMessage(Message.messages["Baseapp_reqAccountNewPassword"]);
-			bundle.writeInt32(entity_id);
-			bundle.writeString(oldpassword);
-			bundle.writeString(newpassword);
-			bundle.send(_networkInterface);
-		}
-	
+		/*
+			获得了服务端摘要信息， 摘要包括协议MD5， entitydefMD5
+		*/
 		public void onServerDigest()
 		{
 			Event.fireOut("onServerDigest", new object[]{currserver, serverProtocolMD5, serverEntitydefMD5});
@@ -1169,31 +1358,10 @@ START_RUN:
 			if(_persistentInofs != null)
 				_persistentInofs.onServerDigest(currserver, serverProtocolMD5, serverEntitydefMD5);
 		}
-		
-		public void Client_onHelloCB(MemoryStream stream)
-		{
-			serverVersion = stream.readString();
-			serverScriptVersion = stream.readString();
-			serverProtocolMD5 = stream.readString();
-			serverEntitydefMD5 = stream.readString();
-			Int32 ctype = stream.readInt32();
-			
-			Dbg.DEBUG_MSG("KBEngine::Client_onHelloCB: verInfo(" + serverVersion 
-				+ "), scriptVersion("+ serverScriptVersion + "), srvProtocolMD5("+ serverProtocolMD5 
-				+ "), srvEntitydefMD5("+ serverEntitydefMD5 + "), + ctype(" + ctype + ")!");
-			
-			onServerDigest();
-			
-			if(currserver == "baseapp")
-			{
-				onLogin_baseapp();
-			}
-			else
-			{
-				onLogin_loginapp();
-			}
-		}
-		
+
+		/*
+			登录loginapp失败了
+		*/
 		public void Client_onLoginFailed(MemoryStream stream)
 		{
 			UInt16 failedcode = stream.readUint16();
@@ -1202,6 +1370,9 @@ START_RUN:
 			Event.fireAll("onLoginFailed", new object[]{failedcode});
 		}
 		
+		/*
+			登录loginapp成功了
+		*/
 		public void Client_onLoginSuccessfully(MemoryStream stream)
 		{
 			var accountName = stream.readString();
@@ -1216,25 +1387,37 @@ START_RUN:
 			login_baseapp(true);
 		}
 		
+		/*
+			登录baseapp失败了
+		*/
 		public void Client_onLoginGatewayFailed(UInt16 failedcode)
 		{
 			Dbg.ERROR_MSG("KBEngine::Client_onLoginGatewayFailed: failedcode(" + failedcode + ")!");
 			Event.fireAll("onLoginGatewayFailed", new object[]{failedcode});
 		}
 
+		/*
+			重登录baseapp失败了
+		*/
 		public void Client_onReLoginGatewayFailed(UInt16 failedcode)
 		{
 			Dbg.ERROR_MSG("KBEngine::Client_onReLoginGatewayFailed: failedcode(" + failedcode + ")!");
 			Event.fireAll("onReLoginGatewayFailed", new object[]{failedcode});
 		}
 		
+		/*
+			登录baseapp成功了
+		*/
 		public void Client_onReLoginGatewaySuccessfully(MemoryStream stream)
 		{
 			entity_uuid = stream.readUint64();
 			Dbg.DEBUG_MSG("KBEngine::Client_onReLoginGatewaySuccessfully: name(" + username + ")!");
 			Event.fireAll("onReLoginGatewaySuccessfully", new object[]{});
 		}
-		
+
+		/*
+			服务端通知创建一个角色
+		*/
 		public void Client_onCreatedProxies(UInt64 rndUUID, Int32 eid, string entityType)
 		{
 			Dbg.DEBUG_MSG("KBEngine::Client_onCreatedProxies: eid(" + eid + "), entityType(" + entityType + ")!");
@@ -1254,11 +1437,11 @@ START_RUN:
 			
 			Entity entity = (Entity)Activator.CreateInstance(runclass);
 			entity.id = eid;
-			entity.classtype = entityType;
+			entity.className = entityType;
 			
 			entity.baseMailbox = new Mailbox();
 			entity.baseMailbox.id = eid;
-			entity.baseMailbox.classtype = entityType;
+			entity.baseMailbox.className = entityType;
 			entity.baseMailbox.type = Mailbox.MAILBOX_TYPE.MAILBOX_TYPE_BASE;
 			
 			entities[eid] = entity;
@@ -1278,6 +1461,9 @@ START_RUN:
 			return entity;
 		}
 
+		/*
+			通过流数据获得AOI实体的ID
+		*/
 		public Int32 getAoiEntityIDFromStream(MemoryStream stream)
 		{
 			Int32 id = 0;
@@ -1307,12 +1493,18 @@ START_RUN:
 			return id;
 		}
 		
+		/*
+			服务端使用优化的方式更新实体属性数据
+		*/
 		public void Client_onUpdatePropertysOptimized(MemoryStream stream)
 		{
 			Int32 eid = getAoiEntityIDFromStream(stream);
 			onUpdatePropertys_(eid, stream);
 		}
 		
+		/*
+			服务端更新实体属性数据
+		*/
 		public void Client_onUpdatePropertys(MemoryStream stream)
 		{
 			Int32 eid = stream.readInt32();
@@ -1340,10 +1532,10 @@ START_RUN:
 				return;
 			}
 			
-			ScriptModule sm = EntityDef.moduledefs[entity.classtype];
+			ScriptModule sm = EntityDef.moduledefs[entity.className];
 			Dictionary<UInt16, Property> pdatas = sm.idpropertys;
 
-			while(stream.opsize() > 0)
+			while(stream.length() > 0)
 			{
 				UInt16 utype = 0;
 				
@@ -1359,27 +1551,34 @@ START_RUN:
 				Property propertydata = pdatas[utype];
 				utype = propertydata.properUtype;
 				System.Reflection.MethodInfo setmethod = propertydata.setmethod;
-				
+
 				object val = propertydata.utype.createFromStream(stream);
 				object oldval = entity.getDefinedProptertyByUType(utype);
-				
-				// Dbg.DEBUG_MSG("KBEngine::Client_onUpdatePropertys: " + entity.classtype + "(id=" + eid  + " " + 
-				//	propertydata.name + "=" + val + "), hasSetMethod=" + setmethod + "!");
-				
+
+				 // Dbg.DEBUG_MSG("KBEngine::Client_onUpdatePropertys: " + entity.className + "(id=" + eid  + " " + 
+				 // propertydata.name + "=" + val + "), hasSetMethod=" + setmethod + "!");
+			
 				entity.setDefinedProptertyByUType(utype, val);
 				if(setmethod != null)
 				{
 					setmethod.Invoke(entity, new object[]{oldval});
 				}
+				
 			}
 		}
 
+		/*
+			服务端使用优化的方式调用实体方法
+		*/
 		public void Client_onRemoteMethodCallOptimized(MemoryStream stream)
 		{
 			Int32 eid = getAoiEntityIDFromStream(stream);
 			onRemoteMethodCall_(eid, stream);
 		}
 		
+		/*
+			服务端调用实体方法
+		*/
 		public void Client_onRemoteMethodCall(MemoryStream stream)
 		{
 			Int32 eid = stream.readInt32();
@@ -1398,14 +1597,14 @@ START_RUN:
 			
 			UInt16 methodUtype = 0;
 
-			if(EntityDef.moduledefs[entity.classtype].useMethodDescrAlias)
+			if(EntityDef.moduledefs[entity.className].useMethodDescrAlias)
 				methodUtype = stream.readUint8();
 			else
 				methodUtype = stream.readUint16();
 			
-			Method methoddata = EntityDef.moduledefs[entity.classtype].idmethods[methodUtype];
+			Method methoddata = EntityDef.moduledefs[entity.className].idmethods[methodUtype];
 			
-			// Dbg.DEBUG_MSG("KBEngine::Client_onRemoteMethodCall: " + entity.classtype + "." + methoddata.name);
+			// Dbg.DEBUG_MSG("KBEngine::Client_onRemoteMethodCall: " + entity.className + "." + methoddata.name);
 			
 			object[] args = new object[methoddata.args.Count];
 	
@@ -1422,15 +1621,18 @@ START_RUN:
             {
             	if(methoddata.handler != null)
             	{
-					Dbg.ERROR_MSG("KBEngine::Client_onRemoteMethodCall: " + entity.classtype + "(" + eid + "), callMethod(" + entity.classtype + "." + methoddata.name + ") is error!\nerror=" + e.ToString());
+					Dbg.ERROR_MSG("KBEngine::Client_onRemoteMethodCall: " + entity.className + "(" + eid + "), callMethod(" + entity.className + "." + methoddata.name + ") is error!\nerror=" + e.ToString());
 				}
 				else
 				{
-					Dbg.ERROR_MSG("KBEngine::Client_onRemoteMethodCall: " + entity.classtype + "(" + eid + "), not found method(" + entity.classtype + "." + methoddata.name + ")!\nerror=" + e.ToString());
+					Dbg.ERROR_MSG("KBEngine::Client_onRemoteMethodCall: " + entity.className + "(" + eid + "), not found method(" + entity.className + "." + methoddata.name + ")!\nerror=" + e.ToString());
 				}
             }
 		}
-			
+
+		/*
+			服务端通知一个实体进入了世界(如果实体是当前玩家则玩家第一次在一个space中创建了， 如果是其他实体则是其他实体进入了玩家的AOI)
+		*/
 		public void Client_onEntityEnterWorld(MemoryStream stream)
 		{
 			Int32 eid = stream.readInt32();
@@ -1445,7 +1647,7 @@ START_RUN:
 			
 			sbyte isOnGound = 1;
 			
-			if(stream.opsize() > 0)
+			if(stream.length() > 0)
 				isOnGound = stream.readInt8();
 			
 			string entityType = EntityDef.idmoduledefs[uentityType].name;
@@ -1468,11 +1670,11 @@ START_RUN:
 				
 				entity = (Entity)Activator.CreateInstance(runclass);
 				entity.id = eid;
-				entity.classtype = entityType;
+				entity.className = entityType;
 				
 				entity.cellMailbox = new Mailbox();
 				entity.cellMailbox.id = eid;
-				entity.cellMailbox.classtype = entityType;
+				entity.cellMailbox.className = entityType;
 				entity.cellMailbox.type = Mailbox.MAILBOX_TYPE.MAILBOX_TYPE_CELL;
 				
 				entities[eid] = entity;
@@ -1500,7 +1702,7 @@ START_RUN:
 				
 					entity.cellMailbox = new Mailbox();
 					entity.cellMailbox.id = eid;
-					entity.cellMailbox.classtype = entityType;
+					entity.cellMailbox.className = entityType;
 					entity.cellMailbox.type = Mailbox.MAILBOX_TYPE.MAILBOX_TYPE_CELL;
 					
 					_entityServerPos = entity.position;
@@ -1510,12 +1712,18 @@ START_RUN:
 			}
 		}
 
+		/*
+			服务端使用优化的方式通知一个实体离开了世界(如果实体是当前玩家则玩家离开了space， 如果是其他实体则是其他实体离开了玩家的AOI)
+		*/
 		public void Client_onEntityLeaveWorldOptimized(MemoryStream stream)
 		{
 			Int32 eid = getAoiEntityIDFromStream(stream);
 			KBEngineApp.app.Client_onEntityLeaveWorld(eid);
 		}
-		
+
+		/*
+			服务端通知一个实体离开了世界(如果实体是当前玩家则玩家离开了space， 如果是其他实体则是其他实体离开了玩家的AOI)
+		*/
 		public void Client_onEntityLeaveWorld(Int32 eid)
 		{
 			Entity entity = null;
@@ -1541,14 +1749,17 @@ START_RUN:
 				_entityIDAliasIDList.Remove(eid);
 			}
 		}
-		
+
+		/*
+			服务端通知当前玩家进入了一个新的space
+		*/
 		public void Client_onEntityEnterSpace(MemoryStream stream)
 		{
 			Int32 eid = stream.readInt32();
 			
 			sbyte isOnGound = 1;
 			
-			if(stream.opsize() > 0)
+			if(stream.length() > 0)
 				isOnGound = stream.readInt8();
 			
 			Entity entity = null;
@@ -1564,6 +1775,9 @@ START_RUN:
 			entity.onEnterSpace();
 		}
 		
+		/*
+			服务端通知当前玩家离开了space
+		*/
 		public void Client_onEntityLeaveSpace(Int32 eid)
 		{
 			Entity entity = null;
@@ -1578,6 +1792,9 @@ START_RUN:
 			clearSpace(false);
 		}
 	
+		/*
+			账号创建返回结果
+		*/
 		public void Client_onCreateAccountResult(MemoryStream stream)
 		{
 			UInt16 retcode = stream.readUint16();
@@ -1593,15 +1810,18 @@ START_RUN:
 	
 			Dbg.DEBUG_MSG("KBEngine::Client_onCreateAccountResult: " + username + " create is successfully!");
 		}
-		
+
+		/*
+			更新当前玩家的位置与朝向到服务端， 可以通过开关_syncPlayer关闭这个机制
+		*/
 		public void updatePlayerToServer()
 		{
-			if(!syncPlayer || spaceID == 0)
+			if(!_args.syncPlayer || spaceID == 0)
 			{
 				return;
 			}
 			
-			TimeSpan span = DateTime.Now - _lastUpdateToServerTime_; 
+			TimeSpan span = DateTime.Now - _lastUpdateToServerTime; 
 			
 			if(span.Milliseconds < 50)
 				return;
@@ -1610,7 +1830,7 @@ START_RUN:
 			if(playerEntity == null || playerEntity.inWorld == false)
 				return;
 			
-			_lastUpdateToServerTime_ = System.DateTime.Now;
+			_lastUpdateToServerTime = System.DateTime.Now;
 			
 			Vector3 position = playerEntity.position;
 			Vector3 direction = playerEntity.direction;
@@ -1637,7 +1857,11 @@ START_RUN:
 				bundle.send(_networkInterface);
 			}
 		}
-		
+
+		/*
+			当前space添加了关于几何等信息的映射资源
+			客户端可以通过这个资源信息来加载对应的场景
+		*/
 		public void addSpaceGeometryMapping(UInt32 uspaceID, string respath)
 		{
 			Dbg.DEBUG_MSG("KBEngine::addSpaceGeometryMapping: spaceID(" + uspaceID + "), respath(" + respath + ")!");
@@ -1691,12 +1915,15 @@ START_RUN:
 			}
 		}
 		
+		/*
+			服务端初始化客户端的spacedata， spacedata请参考API
+		*/
 		public void Client_initSpaceData(MemoryStream stream)
 		{
 			clearSpace(false);
 			spaceID = stream.readUint32();
 			
-			while(stream.opsize() > 0)
+			while(stream.length() > 0)
 			{
 				string key = stream.readString();
 				string val = stream.readString();
@@ -1705,7 +1932,10 @@ START_RUN:
 			
 			Dbg.DEBUG_MSG("KBEngine::Client_initSpaceData: spaceID(" + spaceID + "), size(" + _spacedatas.Count + ")!");
 		}
-		
+
+		/*
+			服务端设置客户端的spacedata， spacedata请参考API
+		*/
 		public void Client_setSpaceData(UInt32 spaceID, string key, string value)
 		{
 			Dbg.DEBUG_MSG("KBEngine::Client_setSpaceData: spaceID(" + spaceID + "), key(" + key + "), value(" + value + ")!");
@@ -1715,6 +1945,9 @@ START_RUN:
 				addSpaceGeometryMapping(spaceID, value);
 		}
 
+		/*
+			服务端删除客户端的spacedata， spacedata请参考API
+		*/
 		public void Client_delSpaceData(UInt32 spaceID, string key)
 		{
 			Dbg.DEBUG_MSG("KBEngine::Client_delSpaceData: spaceID(" + spaceID + "), key(" + key + ")");
@@ -1733,6 +1966,9 @@ START_RUN:
 			return val;
 		}
 
+		/*
+			服务端通知强制销毁一个实体
+		*/
 		public void Client_onEntityDestroyed(Int32 eid)
 		{
 			Dbg.DEBUG_MSG("KBEngine::Client_onEntityDestroyed: entity(" + eid + ")");
@@ -1752,6 +1988,9 @@ START_RUN:
 			entity.onDestroy();
 		}
 		
+		/*
+			服务端更新玩家的基础位置， 客户端以这个基础位置加上便宜值计算出玩家周围实体的坐标
+		*/
 		public void Client_onUpdateBasePos(MemoryStream stream)
 		{
 			_entityServerPos.x = stream.readFloat();
@@ -1776,7 +2015,11 @@ START_RUN:
 				return;
 			}
 		}
-		
+
+		/*
+			服务端强制设置了玩家的坐标 
+			例如：在服务端使用avatar.position=(0,0,0), 或者玩家位置与速度异常时会强制拉回到一个位置
+		*/
 		public void Client_onSetEntityPosAndDir(MemoryStream stream)
 		{
 			Int32 eid = stream.readInt32();
@@ -2120,6 +2363,10 @@ START_RUN:
 			}
 		}
 		
+		/*
+			服务端通知流数据下载开始
+			请参考API手册关于onStreamDataStarted
+		*/
 		public void Client_onStreamDataStarted(Int16 id, UInt32 datasize, string descr)
 		{
 		}
@@ -2131,71 +2378,125 @@ START_RUN:
 		public void Client_onStreamDataCompleted(Int16 id)
 		{
 		}
-		
-		public void Client_onReqAccountResetPasswordCB(UInt16 failcode)
-		{
-			if(failcode != 0)
-			{
-				Dbg.ERROR_MSG("KBEngine::Client_onReqAccountResetPasswordCB: " + username + " is failed! code=" + failcode + "!");
-				return;
-			}
-	
-			Dbg.DEBUG_MSG("KBEngine::Client_onReqAccountResetPasswordCB: " + username + " is successfully!");
-		}
-		
-		public void Client_onReqAccountBindEmailCB(UInt16 failcode)
-		{
-			if(failcode != 0)
-			{
-				Dbg.ERROR_MSG("KBEngine::Client_onReqAccountBindEmailCB: " + username + " is failed! code=" + failcode + "!");
-				return;
-			}
-	
-			Dbg.DEBUG_MSG("KBEngine::Client_onReqAccountBindEmailCB: " + username + " is successfully!");
-		}
-		
-		public void Client_onReqAccountNewPasswordCB(UInt16 failcode)
-		{
-			if(failcode != 0)
-			{
-				Dbg.ERROR_MSG("KBEngine::Client_onReqAccountNewPasswordCB: " + username + " is failed! code=" + failcode + "!");
-				return;
-			}
-	
-			Dbg.DEBUG_MSG("KBEngine::Client_onReqAccountNewPasswordCB: " + username + " is successfully!");
-		}
 	}
+	
 
 	public class KBEngineAppThread : KBEngineApp
 	{
+		/*
+			KBEngine处理线程
+		*/
+	    public class KBEThread
+	    {
+
+	        KBEngineApp app_;
+			public bool over = false;
+			
+	        public KBEThread(KBEngineApp app)
+	        {
+	            this.app_ = app;
+	        }
+
+	        public void run()
+	        {
+				Dbg.INFO_MSG("KBEThread::run()");
+				over = false;
+
+	            try
+	            {
+	                this.app_.process();
+	            }
+	            catch (Exception e)
+	            {
+	                Dbg.ERROR_MSG(e.ToString());
+	            }
+				
+				over = true;
+				Dbg.INFO_MSG("KBEThread::end()");
+	        }
+	    }
+    
 		private Thread _t = null;
 		public KBEThread kbethread = null;
 
-		public bool isbreak = false;
+		// 主循环tick间隔
+		public static int HZ_TICK = 100;
 		
+		// 插件是否退出
+		private bool _isbreak = false;
+		
+		private System.DateTime _lasttime = System.DateTime.Now;
 
-		public KBEngineAppThread(string persistentDataPath, string ip, UInt16 port, sbyte clientType) : base( persistentDataPath, ip, port, clientType )
+		public KBEngineAppThread(KBEngineArgs args) : 
+			base(args)
 		{
-			kbethread = new KBEThread(this);
+		}
+
+		public override bool initialize(KBEngineArgs args)
+		{
+			base.initialize(args);
 			
+			KBEngineAppThread.HZ_TICK = args.HZ_TICK;
+			
+			kbethread = new KBEThread(this);
 			_t = new Thread(new ThreadStart(kbethread.run));
 			_t.Start();
+			
+			return true;
+		}
+
+		public override void reset()
+		{
+			_isbreak = false;
+			_lasttime = System.DateTime.Now;
+			
+			base.reset();
+		}
+
+		/*
+			插件退出处理
+		*/
+		public void breakProcess()
+		{
+			_isbreak = true;
+		}
+		
+		public bool isbreak()
+		{
+			return _isbreak;
 		}
 		
 		public override void process()
 		{
-			while(!isbreak)
+			while(!isbreak())
 			{
 				base.process();
+				_thread_wait();
 			}
 			
 			Dbg.WARNING_MSG("KBEngineAppThread::process(): break!");
 		}
 	
+		/*
+			防止占满CPU, 需要让线程等待一会
+		*/
+		void _thread_wait()
+		{
+			TimeSpan span = DateTime.Now - _lasttime; 
+			
+			int diff = HZ_TICK - span.Milliseconds;
+
+			if(diff < 0)
+				diff = 0;
+			
+			System.Threading.Thread.Sleep(diff);
+			_lasttime = DateTime.Now;
+		}
+		
 		public override void destroy()
 		{
 			Dbg.WARNING_MSG("KBEngineAppThread::destroy()");
-			isbreak = true;
+			breakProcess();
 			
 			int i = 0;
 			while(!kbethread.over && i < 50)
@@ -2212,4 +2513,4 @@ START_RUN:
 			base.destroy();
 		}
 	}
-}
+} 

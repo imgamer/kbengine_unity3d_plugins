@@ -5,6 +5,11 @@
 	using System.Collections;
 	using System.Collections.Generic;
 	
+	/*
+		这个模块将多个数据包打捆在一起
+		由于每个数据包都有最大上限， 向Bundle中写入大量数据将会在内部产生多个MemoryStream
+		在send时会全部发送出去
+	*/
     public class Bundle 
     {
     	public MemoryStream stream = new MemoryStream();
@@ -38,15 +43,15 @@
 			if(msgtype.msglen != -1)
 				return;
 
-			if(stream.opsize() >= messageLength)
+			if(stream.length() >= messageLength)
 			{
-				int idx = (int)stream.opsize() - messageLength - 2;
+				int idx = (int)stream.length() - messageLength - 2;
 				stream.data()[idx] = (Byte)(messageLength & 0xff);
 				stream.data()[idx + 1] = (Byte)(messageLength >> 8 & 0xff);
 			}
 			else
 			{
-				int size = messageLength - (int)stream.opsize();
+				int size = messageLength - (int)stream.length();
 				byte[] data = streamList[numMessage - 1].data();
 				
 				int idx = data.Length - size - 2;
@@ -95,7 +100,7 @@
 		
 		public void checkStream(int v)
 		{
-			if(v > stream.fillfree())
+			if(v > stream.space())
 			{
 				streamList.Add(stream);
 				stream = new MemoryStream();

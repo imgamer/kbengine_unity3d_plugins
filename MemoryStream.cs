@@ -9,6 +9,10 @@
     using System.Threading; 
 	using System.Runtime.InteropServices;
 	
+	/*
+		二进制数据流模块
+		能够将一些基本类型序列化(writeXXX)成二进制流同时也提供了反序列化(readXXX)等操作
+	*/
     public class MemoryStream 
     {
     	public const int BUFFER_MAX = 1460 * 4;
@@ -243,7 +247,7 @@
 		public void writeBlob(byte[] v)
 		{
 			UInt32 size = (UInt32)v.Length;
-			if(size + 4 > fillfree())
+			if(size + 4 > space())
 			{
 				Dbg.ERROR_MSG("memorystream::writeBlob: no free!");
 				return;
@@ -259,7 +263,7 @@
 		
 		public void writeString(string v)
 		{
-			if(v.Length > fillfree())
+			if(v.Length > space())
 			{
 				Dbg.ERROR_MSG("memorystream::writeString: no free!");
 				return;
@@ -273,7 +277,21 @@
 			
 			datas_[wpos++] = 0;
 		}
-		
+
+		//---------------------------------------------------------------------------------
+		public void append(byte[] datas, UInt32 offset, UInt32 size)
+		{
+			UInt32 free = space();
+			if (free < size) {
+				byte[] newdatas = new byte[datas_.Length + size * 2]; 
+				Array.Copy(datas_, 0, newdatas, 0, wpos);
+				datas_ = newdatas;
+			}
+
+			Array.Copy(datas, offset, datas_, wpos, size);
+			wpos += (int)size;
+		}
+
 		//---------------------------------------------------------------------------------
 		public void readSkip(UInt32 v)
 		{
@@ -281,13 +299,13 @@
 		}
 		
 		//---------------------------------------------------------------------------------
-		public UInt32 fillfree()
+		public UInt32 space()
 		{
-			return (UInt32)(BUFFER_MAX - wpos);
+			return (UInt32)(data().Length - wpos);
 		}
 	
 		//---------------------------------------------------------------------------------
-		public UInt32 opsize()
+		public UInt32 length()
 		{
 			return (UInt32)(wpos - rpos);
 		}
@@ -297,15 +315,9 @@
 		{
 			return (BUFFER_MAX - rpos) <= 0;
 		}
-		
+
 		//---------------------------------------------------------------------------------
-		public UInt32 totalsize()
-		{
-			return opsize();
-		}
-	
-		//---------------------------------------------------------------------------------
-		public void opfini()
+		public void done()
 		{
 			rpos = wpos;
 		}
@@ -314,13 +326,16 @@
 		public void clear()
 		{
 			rpos = wpos = 0;
+
+			if(datas_.Length > BUFFER_MAX)
+			   datas_ = new byte[BUFFER_MAX]; 
 		}
 		
 		//---------------------------------------------------------------------------------
 		public byte[] getbuffer()
 		{
-			byte[] buf = new byte[opsize()];
-			Array.Copy(data(), rpos, buf, 0, opsize());
+			byte[] buf = new byte[length()];
+			Array.Copy(data(), rpos, buf, 0, length());
 			return buf;
 		}
 		
