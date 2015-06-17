@@ -35,9 +35,12 @@
 		// 接收缓冲区大小
 		public MessageLengthEx RECV_BUFFER_MAX = NetworkInterface.TCP_PACKET_MAX;
 		
+		// 是否多线程启动
+		public bool isMultiThreads = false;
+		
 		// 只在多线程模式启用
-		// 主循环tick间隔
-		public int HZ_TICK = 100;
+		// 线程主循环处理频率
+		public int threadUpdateHZ = 10;
 		
 		public int getRecvBufferSize()
 		{

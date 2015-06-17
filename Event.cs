@@ -25,17 +25,17 @@
 			public object[] args;
 		};
 		
-    	public static Dictionary<string, List<Pair>> events_out = new Dictionary<string, List<Pair>>();
+    	static Dictionary<string, List<Pair>> events_out = new Dictionary<string, List<Pair>>();
 		
-		public static LinkedList<EventObj> firedEvents_out = new LinkedList<EventObj>();
-		private static LinkedList<EventObj> doingEvents_out = new LinkedList<EventObj>();
+		static LinkedList<EventObj> firedEvents_out = new LinkedList<EventObj>();
+		static LinkedList<EventObj> doingEvents_out = new LinkedList<EventObj>();
 		
-    	public static Dictionary<string, List<Pair>> events_in = new Dictionary<string, List<Pair>>();
+    	static Dictionary<string, List<Pair>> events_in = new Dictionary<string, List<Pair>>();
 		
-		public static LinkedList<EventObj> firedEvents_in = new LinkedList<EventObj>();
-		private static LinkedList<EventObj> doingEvents_in = new LinkedList<EventObj>();
+		static LinkedList<EventObj> firedEvents_in = new LinkedList<EventObj>();
+		static LinkedList<EventObj> doingEvents_in = new LinkedList<EventObj>();
 
-		private static bool _isPauseOut = false;
+		static bool _isPauseOut = false;
 	
 		public Event()
 		{
@@ -50,9 +50,16 @@
 
 		public static void clearFiredEvents()
 		{
+			monitor_Enter(events_out);
 			firedEvents_out.Clear();
+			monitor_Exit(events_out);
+			
 			doingEvents_out.Clear();
+			
+			monitor_Enter(events_in);
 			firedEvents_in.Clear();
+			monitor_Exit(events_in);
+			
 			doingEvents_in.Clear();
 			
 			_isPauseOut = false;
@@ -73,6 +80,22 @@
 			return _isPauseOut;
 		}
 
+		public static void monitor_Enter(object obj)
+		{
+			if(KBEngineApp.app == null || KBEngineApp.app.getInitArgs().isMultiThreads == false)
+				return;
+			
+			Monitor.Enter(obj);
+		}
+
+		public static void monitor_Exit(object obj)
+		{
+			if(KBEngineApp.app == null || KBEngineApp.app.getInitArgs().isMultiThreads == false)
+				return;
+			
+			Monitor.Exit(obj);
+		}
+		
 		public static bool hasRegisterOut(string eventname)
 		{
 			return _hasRegister(events_out, eventname);
@@ -87,9 +110,9 @@
 		{
 			bool has = false;
 			
-			Monitor.Enter(events);
+			monitor_Enter(events);
 			has = events.ContainsKey(eventname);
-			Monitor.Exit(events);
+			monitor_Exit(events);
 			
 			return has;
 		}
@@ -128,20 +151,20 @@
 				return false;
 			}
 			
-			Monitor.Enter(events);
+			monitor_Enter(events);
 			if(!events.TryGetValue(eventname, out lst))
 			{
 				lst = new List<Pair>();
 				lst.Add(pair);
-				Dbg.DEBUG_MSG("Event::register: event(" + eventname + ")!");
+				//Dbg.DEBUG_MSG("Event::register: event(" + eventname + ")!");
 				events.Add(eventname, lst);
-				Monitor.Exit(events);
+				monitor_Exit(events);
 				return true;
 			}
 			
-			Dbg.DEBUG_MSG("Event::register: event(" + eventname + ")!");
+			//Dbg.DEBUG_MSG("Event::register: event(" + eventname + ")!");
 			lst.Add(pair);
-			Monitor.Exit(events);
+			monitor_Exit(events);
 			return true;
 		}
 
@@ -157,12 +180,12 @@
 		
 		private static bool deregister(Dictionary<string, List<Pair>> events, string eventname, object obj, string funcname)
 		{
-			Monitor.Enter(events);
+			monitor_Enter(events);
 			List<Pair> lst = null;
 			
 			if(!events.TryGetValue(eventname, out lst))
 			{
-				Monitor.Exit(events);
+				monitor_Exit(events);
 				return false;
 			}
 			
@@ -170,14 +193,14 @@
 			{
 				if(obj == lst[i].obj && lst[i].funcname == funcname)
 				{
-					Dbg.DEBUG_MSG("Event::deregister: event(" + eventname + ":" + funcname + ")!");
+					//Dbg.DEBUG_MSG("Event::deregister: event(" + eventname + ":" + funcname + ")!");
 					lst.RemoveAt(i);
-					Monitor.Exit(events);
+					monitor_Exit(events);
 					return true;
 				}
 			}
 			
-			Monitor.Exit(events);
+			monitor_Exit(events);
 			return false;
 		}
 
@@ -193,7 +216,7 @@
 		
 		private static bool deregister(Dictionary<string, List<Pair>> events, object obj)
 		{
-			Monitor.Enter(events);
+			monitor_Enter(events);
 			
 			foreach(KeyValuePair<string, List<Pair>> e in events)
 			{
@@ -203,14 +226,14 @@ __RESTART_REMOVE:
 				{
 					if(obj == lst[i].obj)
 					{
-						Dbg.DEBUG_MSG("Event::deregister: event(" + e.Key + ":" + lst[i].funcname + ")!");
+						//Dbg.DEBUG_MSG("Event::deregister: event(" + e.Key + ":" + lst[i].funcname + ")!");
 						lst.RemoveAt(i);
 						goto __RESTART_REMOVE;
 					}
 				}
 			}
 			
-			Monitor.Exit(events);
+			monitor_Exit(events);
 			return true;
 		}
 
@@ -219,7 +242,7 @@ __RESTART_REMOVE:
 			通常由渲染表现层来注册, 例如：监听角色血量属性的变化， 如果UI层注册这个事件，
 			事件触发后就可以根据事件所附带的当前血量值来改变角色头顶的血条值。
 		*/
-		public static void fireOut(string eventname, object[] args)
+		public static void fireOut(string eventname, params object[] args)
 		{
 			fire_(events_out, firedEvents_out, eventname, args);
 		}
@@ -228,7 +251,7 @@ __RESTART_REMOVE:
 			渲染表现层抛出事件(in = render->kbe)
 			通常由kbe插件层来注册， 例如：UI层点击登录， 此时需要触发一个事件给kbe插件层进行与服务端交互的处理。
 		*/
-		public static void fireIn(string eventname, object[] args)
+		public static void fireIn(string eventname, params object[] args)
 		{
 			fire_(events_in, firedEvents_in, eventname, args);
 		}
@@ -236,7 +259,7 @@ __RESTART_REMOVE:
 		/*
 			触发kbe插件和渲染表现层都能够收到的事件
 		*/
-		public static void fireAll(string eventname, object[] args)
+		public static void fireAll(string eventname, params object[] args)
 		{
 			fire_(events_in, firedEvents_in, eventname, args);
 			fire_(events_out, firedEvents_out, eventname, args);
@@ -244,7 +267,7 @@ __RESTART_REMOVE:
 		
 		private static void fire_(Dictionary<string, List<Pair>> events, LinkedList<EventObj> firedEvents, string eventname, object[] args)
 		{
-			Monitor.Enter(events);
+			monitor_Enter(events);
 			List<Pair> lst = null;
 			
 			if(!events.TryGetValue(eventname, out lst))
@@ -254,7 +277,7 @@ __RESTART_REMOVE:
 				else
 					Dbg.WARNING_MSG("Event::fireOut: event(" + eventname + ") not found!");
 				
-				Monitor.Exit(events);
+				monitor_Exit(events);
 				return;
 			}
 			
@@ -266,12 +289,12 @@ __RESTART_REMOVE:
 				firedEvents.AddLast(eobj);
 			}
 			
-			Monitor.Exit(events);
+			monitor_Exit(events);
 		}
 		
 		public static void processOutEvents()
 		{
-			Monitor.Enter(events_out);
+			monitor_Enter(events_out);
 
 			if(firedEvents_out.Count > 0)
 			{
@@ -283,7 +306,7 @@ __RESTART_REMOVE:
 				firedEvents_out.Clear();
 			}
 
-			Monitor.Exit(events_out);
+			monitor_Exit(events_out);
 
 			while (doingEvents_out.Count > 0 && !_isPauseOut) 
 			{
@@ -301,8 +324,7 @@ __RESTART_REMOVE:
 				}
 	            catch (Exception e)
 	            {
-	            	Dbg.ERROR_MSG(e.ToString());
-	            	Dbg.ERROR_MSG("Event::processOutEvents: event=" + eobj.info.funcname);
+	            	Dbg.ERROR_MSG("Event::processOutEvents: event=" + eobj.info.funcname + "\n" + e.ToString());
 	            }
             
 				doingEvents_out.RemoveFirst();
@@ -311,7 +333,7 @@ __RESTART_REMOVE:
 		
 		public static void processInEvents()
 		{
-			Monitor.Enter(events_in);
+			monitor_Enter(events_in);
 
 			if(firedEvents_in.Count > 0)
 			{
@@ -323,7 +345,7 @@ __RESTART_REMOVE:
 				firedEvents_in.Clear();
 			}
 
-			Monitor.Exit(events_in);
+			monitor_Exit(events_in);
 
 			while (doingEvents_in.Count > 0) 
 			{
@@ -338,12 +360,10 @@ __RESTART_REMOVE:
 				try
 				{
 					eobj.info.method.Invoke (eobj.info.obj, eobj.args);
-
 				}
 	            catch (Exception e)
 	            {
-	            	Dbg.ERROR_MSG(e.ToString());
-	            	Dbg.ERROR_MSG("Event::processInEvents: event=" + eobj.info.funcname);
+	            	Dbg.ERROR_MSG("Event::processInEvents: event=" + eobj.info.funcname + "\n" + e.ToString());
 	            }
 	            
 				doingEvents_in.RemoveFirst();

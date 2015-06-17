@@ -78,9 +78,12 @@
 		private byte[] _serverdatas = new byte[0];
 		private byte[] _clientdatas = new byte[0];
 		
+		// 通信协议加密，blowfish协议
+		private byte[] _encryptedKey = new byte[0];
+		
 		// 服务端与客户端的版本号以及协议MD5
 		public string serverVersion = "";
-		public string clientVersion = "0.2.0";
+		public string clientVersion = "0.6.1";
 		public string serverScriptVersion = "";
 		public string clientScriptVersion = "0.1.0";
 		public string serverProtocolMD5 = "";
@@ -94,10 +97,13 @@
 		public UInt64 entity_uuid = 0;
 		public Int32 entity_id = 0;
 		public string entity_type = "";
+
+		// 本地entity id（以负数表示本地的entity id）
+		private Int32 lastLocaleEntityID = -1;
+
+		private List<Entity> _controlledEntities = new List<Entity>();
 		
-		// 当前玩家最后一次同步到服务端的位置与朝向与服务端最后一次同步过来的位置
-		private Vector3 _entityLastLocalPos = new Vector3(0f, 0f, 0f);
-		private Vector3 _entityLastLocalDir = new Vector3(0f, 0f, 0f);
+		// 当前服务端最后一次同步过来的玩家位置
 		private Vector3 _entityServerPos = new Vector3(0f, 0f, 0f);
 		
 		// space的数据，具体看API手册关于spaceData
@@ -174,6 +180,7 @@
 			Event.registerIn("createAccount", this, "createAccount");
 			Event.registerIn("login", this, "login");
 			Event.registerIn("relogin_baseapp", this, "relogin_baseapp");
+			Event.registerIn("_closeNetwork", this, "_closeNetwork");
 		}
 	
 		public KBEngineArgs getInitArgs()
@@ -230,7 +237,6 @@
 			currserver = "";
 			currstate = "";
 			_serverdatas = new byte[0];
-			_clientdatas = new byte[0];
 			serverVersion = "";
 			serverScriptVersion = "";
 			
@@ -277,7 +283,50 @@
 		{
 			Task.remove( timerID );
 		}
-		
+
+		/// <summary>
+		/// 创建一个本地Entity
+		/// </summary>
+		public Entity createEntity( string className, Vector3 position, Vector3 direction )
+		{
+			var eid = lastLocaleEntityID--;
+
+			string entityType = className;
+			// Dbg.DEBUG_MSG("KBEngine::Client_onEntityEnterWorld: " + entityType + "(" + eid + "), spaceID(" + KBEngineApp.app.spaceID + ")!");
+
+			if (entities.ContainsKey(eid) || _bufferedCreateEntityMessage.ContainsKey(eid))
+			{
+				Dbg.ERROR_MSG("KBEngine::createEntity: entity id (" + eid + ") already existed!");
+				return null;
+			}
+
+			ScriptModule module = null;
+			if (!EntityDef.moduledefs.TryGetValue(entityType, out module))
+			{
+				Dbg.ERROR_MSG("KBEngine::Client_onCreatedProxies: not found module(" + entityType + ")!");
+			}
+
+			Type runclass = module.script;
+			if (runclass == null)
+				return null;
+
+			var entity = (Entity)Activator.CreateInstance(runclass);
+			entity.id = eid;
+			entity.className = entityType;
+
+			entities[eid] = entity;
+
+			entity.position.Set(position.x, position.y, position.z);
+			entity.direction.Set(direction.x, direction.y, direction.z);
+
+			entity.isClientOnly = true;
+			entity.isOnGound = true;
+			entity.__init__();
+			entity.enterWorld();
+
+			return entity;
+		}
+
 		public static bool validEmail(string strEmail) 
 		{ 
 			return Regex.IsMatch(strEmail, @"^([\w-\.]+)@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.)
@@ -291,14 +340,14 @@
 		{
 			Task.updateAll();
 		
+			// 处理网络
+			_networkInterface.process();
+			
 			// 处理外层抛入的事件
 			Event.processInEvents();
 			
 			// 向服务端发送心跳以及同步角色信息到服务端
 			sendTick();
-			
-			// 处理网络
-			_networkInterface.process();
 		}
 		
 		/*
@@ -313,6 +362,11 @@
 			return null;
 		}
 
+		public void _closeNetwork(NetworkInterface networkInterface)
+		{
+			networkInterface.close();
+		}
+		
 		/*
 			向服务端发送心跳以及同步角色信息到服务端
 		*/
@@ -373,7 +427,7 @@
 			
 			bundle.writeString(clientVersion);
 			bundle.writeString(clientScriptVersion);
-			bundle.writeBlob(_clientdatas);
+			bundle.writeBlob(_encryptedKey);
 			bundle.send(_networkInterface);
 		}
 
@@ -413,6 +467,9 @@
 			
 			Dbg.ERROR_MSG("Client_onVersionNotMatch: verInfo=" + clientVersion + "(server: " + serverVersion + ")");
 			Event.fireAll("onVersionNotMatch", new object[]{clientVersion, serverVersion});
+			
+			if(_persistentInofs != null)
+				_persistentInofs.onVersionNotMatch(clientVersion, serverVersion);
 		}
 
 		/*
@@ -424,6 +481,9 @@
 			
 			Dbg.ERROR_MSG("Client_onScriptVersionNotMatch: verInfo=" + clientScriptVersion + "(server: " + serverScriptVersion + ")");
 			Event.fireAll("onScriptVersionNotMatch", new object[]{clientScriptVersion, serverScriptVersion});
+			
+			if(_persistentInofs != null)
+				_persistentInofs.onScriptVersionNotMatch(clientScriptVersion, serverScriptVersion);
 		}
 		
 		/*
@@ -442,8 +502,11 @@
 		{
 			byte[] datas = new byte[stream.wpos - stream.rpos];
 			Array.Copy(stream.data(), stream.rpos, datas, 0, stream.wpos - stream.rpos);
-			Event.fireAll("onImportServerErrorsDescr", new object[]{datas});
+			
 			onImportServerErrorsDescr (stream);
+			
+			if(_persistentInofs != null)
+				_persistentInofs.onImportServerErrorsDescr(datas);
 		}
 
 		/*
@@ -463,17 +526,19 @@
 				
 				serverErrs.Add(e.id, e);
 					
-				Dbg.DEBUG_MSG("Client_onImportServerErrorsDescr: id=" + e.id + ", name=" + e.name + ", descr=" + e.descr);
+				//Dbg.DEBUG_MSG("Client_onImportServerErrorsDescr: id=" + e.id + ", name=" + e.name + ", descr=" + e.descr);
 			}
 		}
 		
 		/*
 			登录到服务端，必须登录完成loginapp与网关(baseapp)，登录流程才算完毕
 		*/
-		public void login(string username, string password)
+		public void login(string username, string password, byte[] datas)
 		{
 			KBEngineApp.app.username = username;
 			KBEngineApp.app.password = password;
+			KBEngineApp.app._clientdatas = datas;
+			
 			KBEngineApp.app.login_loginapp(true);
 		}
 		
@@ -493,7 +558,7 @@
 				Bundle bundle = new Bundle();
 				bundle.newMessage(Message.messages["Loginapp_login"]);
 				bundle.writeInt8((sbyte)_args.clientType); // clientType
-				bundle.writeBlob(new byte[0]);
+				bundle.writeBlob(KBEngineApp.app._clientdatas);
 				bundle.writeString(username);
 				bundle.writeString(password);
 				bundle.send(_networkInterface);
@@ -511,7 +576,7 @@
 			currserver = "loginapp";
 			currstate = "login";
 			
-			Dbg.DEBUG_MSG(string.Format("KBEngine::login_loginapp(): connect {0}:{1} is successfylly!", ip, port));
+			Dbg.DEBUG_MSG(string.Format("KBEngine::login_loginapp(): connect {0}:{1} is success!", ip, port));
 
 			hello();
 		}
@@ -523,7 +588,7 @@
 				var bundle = new Bundle();
 				bundle.newMessage(Message.messages["Loginapp_importClientMessages"]);
 				bundle.send(_networkInterface);
-				Dbg.DEBUG_MSG("KBEngine::onLogin_loginapp: start importClientMessages ...");
+				Dbg.DEBUG_MSG("KBEngine::onLogin_loginapp: send importClientMessages ...");
 				Event.fireAll("Loginapp_importClientMessages", new object[]{});
 			}
 			else
@@ -578,7 +643,7 @@
 				var bundle = new Bundle();
 				bundle.newMessage(Message.messages["Baseapp_importClientMessages"]);
 				bundle.send(_networkInterface);
-				Dbg.DEBUG_MSG("KBEngine::onLogin_baseapp: start importClientMessages ...");
+				Dbg.DEBUG_MSG("KBEngine::onLogin_baseapp: send importClientMessages ...");
 				Event.fireAll("Baseapp_importClientMessages", new object[]{});
 			}
 			else
@@ -618,64 +683,12 @@
 		}
 		
 		/*
-			自动完成协议导入的所有流程
-		*/
-		public void autoImportMessagesFromServer(bool isLoginapp)
-		{  
-			reset();
-			_networkInterface.connectTo(_args.ip, _args.port, onConnectTo_autoImportMessagesFromServer_callback, isLoginapp);
-		}
-
-		private void onConnectTo_autoImportMessagesFromServer_callback(string ip, int port, bool success, object isLoginapp)
-		{
-			if(!success)
-			{
-				Dbg.ERROR_MSG(string.Format("KBEngine::autoImportMessagesFromServer(): connect {0}:{1} is error!", ip, port));
-				return;
-			}
-			
-			if((bool)isLoginapp)
-			{
-				currserver = "loginapp";
-				currstate = "autoimport";
-				
-				if(!loginappMessageImported_)
-				{
-					var bundle = new Bundle();
-					bundle.newMessage(Message.messages["Loginapp_importClientMessages"]);
-					bundle.send(_networkInterface);
-					Dbg.DEBUG_MSG("KBEngine::autoImportMessagesFromServer: start importClientMessages ...");
-				}
-				else
-				{
-					onImportClientMessagesCompleted();
-				}
-			}
-			else{
-				currserver = "baseapp";
-				currstate = "autoimport";
-				
-				if(!baseappMessageImported_)
-				{
-					var bundle = new Bundle();
-					bundle.newMessage(Message.messages["Baseapp_importClientMessages"]);
-					bundle.send(_networkInterface);
-					Dbg.DEBUG_MSG("KBEngine::autoImportMessagesFromServer: start importClientMessages ...");
-				}
-				else
-				{
-					onImportClientMessagesCompleted();
-				}
-			}
-			
-			Dbg.DEBUG_MSG(string.Format("KBEngine::autoImportMessagesFromServer(): connect {0}:{1} is successfully!", _args.ip, _args.port));
-		}
-		
-		/*
 			从二进制流导入消息协议
 		*/
 		public bool importMessagesFromMemoryStream(byte[] loginapp_clientMessages, byte[] baseapp_clientMessages, byte[] entitydefMessages, byte[] serverErrorsDescr)
 		{
+			resetMessages();
+			
 			loadingLocalMessages_ = true;
 			MemoryStream stream = new MemoryStream();
 			stream.append(loginapp_clientMessages, (UInt32)0, (UInt32)loginapp_clientMessages.Length);
@@ -719,7 +732,7 @@
 			{
 				if(!isImportServerErrorsDescr_ && !loadingLocalMessages_)
 				{
-					Dbg.DEBUG_MSG("KBEngine::onImportClientMessagesCompleted(): start importServerErrorsDescr!");
+					Dbg.DEBUG_MSG("KBEngine::onImportClientMessagesCompleted(): send importServerErrorsDescr!");
 					isImportServerErrorsDescr_ = true;
 					Bundle bundle = new Bundle();
 					bundle.newMessage(Message.messages["Loginapp_importServerErrorsDescr"]);
@@ -752,7 +765,7 @@
 				
 				if(!entitydefImported_ && !loadingLocalMessages_)
 				{
-					Dbg.DEBUG_MSG("KBEngine::onImportClientMessagesCompleted: start importEntityDef ...");
+					Dbg.DEBUG_MSG("KBEngine::onImportClientMessagesCompleted: send importEntityDef(" + entitydefImported_ + ") ...");
 					Bundle bundle = new Bundle();
 					bundle.newMessage(Message.messages["Baseapp_importClientEntityDef"]);
 					bundle.send(_networkInterface);
@@ -774,8 +787,8 @@
 			string name = stream.readString();
 			string valname = stream.readString();
 			
-			if(canprint)
-				Dbg.DEBUG_MSG("KBEngine::Client_onImportClientEntityDef: importAlias(" + name + ":" + valname + ")!");
+			//if(canprint)
+			//	Dbg.DEBUG_MSG("KBEngine::Client_onImportClientEntityDef: importAlias(" + name + ":" + valname + ")!");
 			
 			if(valname == "FIXED_DICT")
 			{
@@ -798,7 +811,7 @@
 			{
 				UInt16 uitemtype = stream.readUint16();
 				KBEDATATYPE_ARRAY datatype = new KBEDATATYPE_ARRAY();
-				datatype.type = uitemtype;
+				datatype.vtype = uitemtype;
 				EntityDef.datatypes[name] = datatype;
 			}
 			else
@@ -816,9 +829,11 @@
 		{
 			byte[] datas = new byte[stream.wpos - stream.rpos];
 			Array.Copy (stream.data (), stream.rpos, datas, 0, stream.wpos - stream.rpos);
-			Event.fireAll ("onImportClientEntityDef", new object[]{datas});
 
 			onImportClientEntityDef (stream);
+			
+			if(_persistentInofs != null)
+				_persistentInofs.onImportClientEntityDef(datas);
 		}
 
 		public void onImportClientEntityDef(MemoryStream stream)
@@ -856,10 +871,7 @@
 				ScriptModule module = new ScriptModule(scriptmethod_name);
 				EntityDef.moduledefs[scriptmethod_name] = module;
 				EntityDef.idmoduledefs[scriptUtype] = module;
-				
-				Dictionary<string, Property> defpropertys = new Dictionary<string, Property>();
-				Entity.alldefpropertys.Add(scriptmethod_name, defpropertys);
-				
+
 				Type Class = module.script;
 				
 				while(propertysize > 0)
@@ -867,6 +879,7 @@
 					propertysize--;
 					
 					UInt16 properUtype = stream.readUint16();
+					UInt32 properFlags = stream.readUint32();
 					Int16 ialiasID = stream.readInt16();
 					string name = stream.readString();
 					string defaultValStr = stream.readString();
@@ -890,11 +903,13 @@
 					
 					Property savedata = new Property();
 					savedata.name = name;
+					savedata.utype = utype;
 					savedata.properUtype = properUtype;
+					savedata.properFlags = properFlags;
 					savedata.aliasID = ialiasID;
 					savedata.defaultValStr = defaultValStr;
-					savedata.utype = utype;
 					savedata.setmethod = setmethod;
+					savedata.val = savedata.utype.parseDefaultValStr(savedata.defaultValStr);
 					
 					module.propertys[name] = savedata;
 					
@@ -909,7 +924,7 @@
 						module.idpropertys[properUtype] = savedata;
 					}
 
-					Dbg.DEBUG_MSG("KBEngine::Client_onImportClientEntityDef: add(" + scriptmethod_name + "), property(" + name + "/" + properUtype + ").");
+					//Dbg.DEBUG_MSG("KBEngine::Client_onImportClientEntityDef: add(" + scriptmethod_name + "), property(" + name + "/" + properUtype + ").");
 				};
 				
 				while(methodsize > 0)
@@ -959,7 +974,7 @@
 						module.idmethods[methodUtype] = savedata;
 					}
 					
-					Dbg.DEBUG_MSG("KBEngine::Client_onImportClientEntityDef: add(" + scriptmethod_name + "), method(" + name + ").");
+					//Dbg.DEBUG_MSG("KBEngine::Client_onImportClientEntityDef: add(" + scriptmethod_name + "), method(" + name + ").");
 				};
 	
 				while(base_methodsize > 0)
@@ -987,7 +1002,7 @@
 					module.base_methods[name] = savedata;
 					module.idbase_methods[methodUtype] = savedata;
 					
-					Dbg.DEBUG_MSG("KBEngine::Client_onImportClientEntityDef: add(" + scriptmethod_name + "), base_method(" + name + ").");
+					//Dbg.DEBUG_MSG("KBEngine::Client_onImportClientEntityDef: add(" + scriptmethod_name + "), base_method(" + name + ").");
 				};
 				
 				while(cell_methodsize > 0)
@@ -1014,33 +1029,14 @@
 				
 					module.cell_methods[name] = savedata;
 					module.idcell_methods[methodUtype] = savedata;
-					Dbg.DEBUG_MSG("KBEngine::Client_onImportClientEntityDef: add(" + scriptmethod_name + "), cell_method(" + name + ").");
+					//Dbg.DEBUG_MSG("KBEngine::Client_onImportClientEntityDef: add(" + scriptmethod_name + "), cell_method(" + name + ").");
 				};
 				
 				if(module.script == null)
 				{
 					Dbg.ERROR_MSG("KBEngine::Client_onImportClientEntityDef: module(" + scriptmethod_name + ") not found!");
 				}
-					
-				foreach(string name in module.propertys.Keys)
-				{
-					Property infos = module.propertys[name];
-					
-					Property newp = new Property();
-					newp.name = infos.name;
-					newp.properUtype = infos.properUtype;
-					newp.aliasID = infos.aliasID;
-					newp.utype = infos.utype;
-					newp.val = infos.utype.parseDefaultValStr(infos.defaultValStr);
-					newp.setmethod = infos.setmethod;
-					
-					defpropertys.Add(infos.name, newp);
-					if(module.script != null && module.script.GetMember(name) == null)
-					{
-						Dbg.ERROR_MSG(scriptmethod_name + "(" + module.script + "):: property(" + name + ") no defined!");
-					}
-				};
-	
+
 				foreach(string name in module.methods.Keys)
 				{
 					// Method infos = module.methods[name];
@@ -1078,6 +1074,21 @@
 
 			return e.name + " [" + e.descr + "]";
 		}
+
+        /*
+             通过错误id得到错误描述
+        */
+        public string serverError(UInt16 id)
+        {
+            ServerErr e;
+
+            if (!serverErrs.TryGetValue(id, out e))
+            {
+                return "";
+            }
+
+            return e.descr;
+        }
 	
 		/*
 			从服务端返回的二进制流导入客户端消息协议
@@ -1086,16 +1097,18 @@
 		{
 			byte[] datas = new byte[stream.wpos - stream.rpos];
 			Array.Copy (stream.data (), stream.rpos, datas, 0, stream.wpos - stream.rpos);
-			Event.fireAll ("onImportClientMessages", new object[]{currserver, datas});
 
 			onImportClientMessages (stream);
+			
+			if(_persistentInofs != null)
+				_persistentInofs.onImportClientMessages(currserver, datas);
 		}
 
 		public void onImportClientMessages(MemoryStream stream)
 		{
 			UInt16 msgcount = stream.readUint16();
 			
-			Dbg.DEBUG_MSG(string.Format("KBEngine::Client_onImportClientMessages: start({0})...", msgcount));
+			Dbg.DEBUG_MSG(string.Format("KBEngine::Client_onImportClientMessages: start currserver=" + currserver + "(msgsize={0})...", msgcount));
 			
 			while(msgcount > 0)
 			{
@@ -1124,12 +1137,13 @@
 					{
 						Dbg.WARNING_MSG(string.Format("KBEngine::onImportClientMessages[{0}]: interface({1}/{2}/{3}) no implement!", 
 							currserver, msgname, msgid, msglen));
+						
 						handler = null;
 					}
 					else
 					{
-						Dbg.DEBUG_MSG(string.Format("KBEngine::onImportClientMessages: imported({0}/{1}/{2}) successfully!", 
-							msgname, msgid, msglen));
+						//Dbg.DEBUG_MSG(string.Format("KBEngine::onImportClientMessages: imported({0}/{1}/{2}) successfully!", 
+						//	msgname, msgid, msglen));
 					}
 				}
 				
@@ -1137,9 +1151,9 @@
 				{
 					Message.messages[msgname] = new Message(msgid, msgname, msglen, argstype, argstypes, handler);
 					
-					if(!isClientMethod)
-						Dbg.DEBUG_MSG(string.Format("KBEngine::onImportClientMessages[{0}]: imported({1}/{2}/{3}) successfully!", 
-							currserver, msgname, msgid, msglen));
+					//if(!isClientMethod)
+					//	Dbg.DEBUG_MSG(string.Format("KBEngine::onImportClientMessages[{0}]: imported({1}/{2}/{3}) successfully!", 
+					//		currserver, msgname, msgid, msglen));
 					
 					if(isClientMethod)
 					{
@@ -1157,9 +1171,9 @@
 				{
 					Message msg = new Message(msgid, msgname, msglen, argstype, argstypes, handler);
 					
-					if(!isClientMethod)
-						Dbg.DEBUG_MSG(string.Format("KBEngine::onImportClientMessages[{0}]: imported({1}/{2}/{3}) successfully!", 
-							currserver, msgname, msgid, msglen));
+					//if(!isClientMethod)
+					//	Dbg.DEBUG_MSG(string.Format("KBEngine::onImportClientMessages[{0}]: imported({1}/{2}/{3}) successfully!", 
+					//		currserver, msgname, msgid, msglen));
 					
 					if(currserver == "loginapp")
 						Message.loginappMessages[msgid] = msg;
@@ -1182,7 +1196,7 @@
 				Bundle bundle = new Bundle();
 				bundle.newMessage(Message.messages["Loginapp_importClientMessages"]);
 				bundle.send(_networkInterface);
-				Dbg.DEBUG_MSG("KBEngine::onOpenLoginapp_resetpassword: start importClientMessages ...");
+				Dbg.DEBUG_MSG("KBEngine::onOpenLoginapp_resetpassword: send importClientMessages ...");
 			}
 			else
 			{
@@ -1226,7 +1240,7 @@
 				return;
 			}
 			
-			Dbg.DEBUG_MSG(string.Format("KBEngine::resetpassword_loginapp(): connect {0}:{1} is successfylly!", ip, port)); 
+			Dbg.DEBUG_MSG(string.Format("KBEngine::resetpassword_loginapp(): connect {0}:{1} is success!", ip, port)); 
 			onOpenLoginapp_resetpassword();
 		}
 		
@@ -1289,10 +1303,12 @@
 			Dbg.DEBUG_MSG("KBEngine::Client_onReqAccountNewPasswordCB: " + username + " is successfully!");
 		}
 
-		public void createAccount(string username, string password)
+		public void createAccount(string username, string password, byte[] datas)
 		{
 			KBEngineApp.app.username = username;
 			KBEngineApp.app.password = password;
+			KBEngineApp.app._clientdatas = datas;
+			
 			KBEngineApp.app.createAccount_loginapp(true);
 		}
 
@@ -1312,7 +1328,7 @@
 				bundle.newMessage(Message.messages["Loginapp_reqCreateAccount"]);
 				bundle.writeString(username);
 				bundle.writeString(password);
-				bundle.writeBlob(new byte[0]);
+				bundle.writeBlob(KBEngineApp.app._clientdatas);
 				bundle.send(_networkInterface);
 			}
 		}
@@ -1328,7 +1344,7 @@
 				Bundle bundle = new Bundle();
 				bundle.newMessage(Message.messages["Loginapp_importClientMessages"]);
 				bundle.send(_networkInterface);
-				Dbg.DEBUG_MSG("KBEngine::onOpenLoginapp_createAccount: start importClientMessages ...");
+				Dbg.DEBUG_MSG("KBEngine::onOpenLoginapp_createAccount: send importClientMessages ...");
 			}
 			else
 			{
@@ -1344,7 +1360,7 @@
 				return;
 			}
 			
-			Dbg.DEBUG_MSG(string.Format("KBEngine::createAccount_loginapp(): connect {0}:{1} is successfylly!", ip, port)); 
+			Dbg.DEBUG_MSG(string.Format("KBEngine::createAccount_loginapp(): connect {0}:{1} is success!", ip, port)); 
 			onOpenLoginapp_createAccount();
 		}
 		
@@ -1353,8 +1369,6 @@
 		*/
 		public void onServerDigest()
 		{
-			Event.fireOut("onServerDigest", new object[]{currserver, serverProtocolMD5, serverEntitydefMD5});
-			
 			if(_persistentInofs != null)
 				_persistentInofs.onServerDigest(currserver, serverProtocolMD5, serverEntitydefMD5);
 		}
@@ -1421,17 +1435,27 @@
 		public void Client_onCreatedProxies(UInt64 rndUUID, Int32 eid, string entityType)
 		{
 			Dbg.DEBUG_MSG("KBEngine::Client_onCreatedProxies: eid(" + eid + "), entityType(" + entityType + ")!");
-			entity_uuid = rndUUID;
-			entity_id = eid;
-			entity_type = entityType;
 			
 			if(this.entities.ContainsKey(eid))
 			{
 				// Dbg.WARNING_MSG("KBEngine::Client_onCreatedProxies: eid(" + eid + ") has exist!");
 				Client_onEntityDestroyed(eid);
 			}
+
+			MemoryStream entityMessage = null;
+			_bufferedCreateEntityMessage.TryGetValue(eid, out entityMessage);
+				
+			entity_uuid = rndUUID;
+			entity_id = eid;
+			entity_type = entityType;
 			
-			Type runclass = EntityDef.moduledefs[entityType].script;
+			ScriptModule module = null;
+			if(!EntityDef.moduledefs.TryGetValue(entityType, out module))
+			{
+				Dbg.ERROR_MSG("KBEngine::Client_onCreatedProxies: not found module(" + entityType + ")!");
+			}
+			
+			Type runclass = module.script;
 			if(runclass == null)
 				return;
 			
@@ -1443,8 +1467,14 @@
 			entity.baseMailbox.id = eid;
 			entity.baseMailbox.className = entityType;
 			entity.baseMailbox.type = Mailbox.MAILBOX_TYPE.MAILBOX_TYPE_BASE;
-			
+
 			entities[eid] = entity;
+			
+			if(entityMessage != null)
+			{
+				Client_onUpdatePropertys(entityMessage);
+				_bufferedCreateEntityMessage.Remove(eid);
+			}
 			
 			entity.__init__();
 		}
@@ -1561,9 +1591,9 @@
 				entity.setDefinedProptertyByUType(utype, val);
 				if(setmethod != null)
 				{
-					setmethod.Invoke(entity, new object[]{oldval});
+					if(propertydata.isBase() || entity.inWorld)
+						setmethod.Invoke(entity, new object[]{oldval});
 				}
-				
 			}
 		}
 
@@ -1651,7 +1681,7 @@
 				isOnGound = stream.readInt8();
 			
 			string entityType = EntityDef.idmoduledefs[uentityType].name;
-			Dbg.DEBUG_MSG("KBEngine::Client_onEntityEnterWorld: " + entityType + "(" + eid + "), spaceID(" + KBEngineApp.app.spaceID + ")!");
+			// Dbg.DEBUG_MSG("KBEngine::Client_onEntityEnterWorld: " + entityType + "(" + eid + "), spaceID(" + KBEngineApp.app.spaceID + ")!");
 			
 			Entity entity = null;
 			
@@ -1664,7 +1694,13 @@
 					return;
 				}
 				
-				Type runclass = EntityDef.moduledefs[entityType].script;
+				ScriptModule module = null;
+				if(!EntityDef.moduledefs.TryGetValue(entityType, out module))
+				{
+					Dbg.ERROR_MSG("KBEngine::Client_onEntityEnterWorld: not found module(" + entityType + ")!");
+				}
+				
+				Type runclass = module.script;
 				if(runclass == null)
 					return;
 				
@@ -1683,11 +1719,11 @@
 				_bufferedCreateEntityMessage.Remove(eid);
 				
 				entity.isOnGound = isOnGound > 0;
+				entity.set_direction(entity.getDefinedPropterty("direction"));
+				entity.set_position(entity.getDefinedPropterty("position"));
+								
 				entity.__init__();
-				entity.onEnterWorld();
-				
-				Event.fireOut("set_direction", new object[]{entity});
-				Event.fireOut("set_position", new object[]{entity});
+				entity.enterWorld();
 			}
 			else
 			{
@@ -1705,9 +1741,12 @@
 					entity.cellMailbox.className = entityType;
 					entity.cellMailbox.type = Mailbox.MAILBOX_TYPE.MAILBOX_TYPE_CELL;
 					
+					entity.set_direction(entity.getDefinedPropterty("direction"));
+					entity.set_position(entity.getDefinedPropterty("position"));					
+
 					_entityServerPos = entity.position;
 					entity.isOnGound = isOnGound > 0;
-					entity.onEnterWorld();
+					entity.enterWorld();
 				}
 			}
 		}
@@ -1735,7 +1774,7 @@
 			}
 			
 			if(entity.inWorld)
-				entity.onLeaveWorld();
+				entity.leaveWorld();
 			
 			if(entity_id == eid)
 			{
@@ -1772,7 +1811,7 @@
 			
 			entity.isOnGound = isOnGound > 0;
 			_entityServerPos = entity.position;
-			entity.onEnterSpace();
+			entity.enterSpace();
 		}
 		
 		/*
@@ -1788,7 +1827,7 @@
 				return;
 			}
 			
-			entity.onLeaveSpace();
+			entity.leaveSpace();
 			clearSpace(false);
 		}
 	
@@ -1809,6 +1848,31 @@
 			}
 	
 			Dbg.DEBUG_MSG("KBEngine::Client_onCreateAccountResult: " + username + " create is successfully!");
+		}
+
+		/*
+			告诉客户端：你当前负责（或取消）控制谁的位移同步
+		*/
+		public void Client_onControlEntity(Int32 eid, sbyte isControlled)
+		{
+			Entity entity = null;
+
+			if (!entities.TryGetValue(eid, out entity))
+			{
+				Dbg.ERROR_MSG("KBEngine::Client_onControlEntity: entity(" + eid + ") not found!");
+				return;
+			}
+
+			if (isControlled != 0)
+			{
+				_controlledEntities.Add(entity);
+				entity.onControlled(true);
+			}
+			else
+			{
+				_controlledEntities.Remove(entity);
+				entity.onControlled(false);
+			}
 		}
 
 		/*
@@ -1835,13 +1899,13 @@
 			Vector3 position = playerEntity.position;
 			Vector3 direction = playerEntity.direction;
 			
-			bool posHasChanged = Vector3.Distance(_entityLastLocalPos, position) > 0.001f;
-			bool dirHasChanged = Vector3.Distance(_entityLastLocalDir, direction) > 0.001f;
+			bool posHasChanged = Vector3.Distance(playerEntity._entityLastLocalPos, position) > 0.001f;
+			bool dirHasChanged = Vector3.Distance(playerEntity._entityLastLocalDir, direction) > 0.001f;
 			
 			if(posHasChanged || dirHasChanged)
 			{
-				_entityLastLocalPos = position;
-				_entityLastLocalDir = direction;
+				playerEntity._entityLastLocalPos = position;
+				playerEntity._entityLastLocalDir = direction;
 				
 				Bundle bundle = new Bundle();
 				bundle.newMessage(Message.messages["Baseapp_onUpdateDataFromClient"]);
@@ -1849,12 +1913,41 @@
 				bundle.writeFloat(position.y);
 				bundle.writeFloat(position.z);
 
-				bundle.writeFloat((float)((double)direction.z / 360 * 6.283185307179586));
-				bundle.writeFloat((float)((double)direction.y / 360 * 6.283185307179586));
 				bundle.writeFloat((float)((double)direction.x / 360 * 6.283185307179586));
+				bundle.writeFloat((float)((double)direction.y / 360 * 6.283185307179586));
+				bundle.writeFloat((float)((double)direction.z / 360 * 6.283185307179586));
 				bundle.writeUint8((Byte)(playerEntity.isOnGound == true ? 1 : 0));
 				bundle.writeUint32(spaceID);
 				bundle.send(_networkInterface);
+			}
+
+			foreach (var entity in _controlledEntities)
+			{
+				position = entity.position;
+				direction = entity.direction;
+
+				posHasChanged = Vector3.Distance(entity._entityLastLocalPos, position) > 0.001f;
+				dirHasChanged = Vector3.Distance(entity._entityLastLocalDir, direction) > 0.001f;
+
+				if (posHasChanged || dirHasChanged)
+				{
+					entity._entityLastLocalPos = position;
+					entity._entityLastLocalDir = direction;
+
+					Bundle bundle = new Bundle();
+					bundle.newMessage(Message.messages["Baseapp_onUpdateDataFromClientForControlledEntity"]);
+					bundle.writeInt32(entity.id);
+					bundle.writeFloat(position.x);
+					bundle.writeFloat(position.y);
+					bundle.writeFloat(position.z);
+
+					bundle.writeFloat((float)((double)direction.x / 360 * 6.283185307179586));
+					bundle.writeFloat((float)((double)direction.y / 360 * 6.283185307179586));
+					bundle.writeFloat((float)((double)direction.z / 360 * 6.283185307179586));
+					bundle.writeUint8((Byte)(entity.isOnGound == true ? 1 : 0));
+					bundle.writeUint32(spaceID);
+					bundle.send(_networkInterface);
+				}
 			}
 		}
 
@@ -1879,6 +1972,7 @@
 			clearEntities(isall);
 			isLoadedGeometry = false;
 			spaceID = 0;
+			_controlledEntities.Clear();
 		}
 		
 		public void clearEntities(bool isall)
@@ -1893,7 +1987,7 @@
 						continue;
 					
 					if(dic.Value.inWorld)
-						dic.Value.onLeaveWorld();
+						dic.Value.leaveWorld();
 					
 				    dic.Value.onDestroy();
 				}  
@@ -1906,7 +2000,7 @@
 				foreach (KeyValuePair<Int32, Entity> dic in entities)  
 				{ 
 					if(dic.Value.inWorld)
-						dic.Value.onLeaveWorld();
+						dic.Value.leaveWorld();
 
 				    dic.Value.onDestroy();
 				}  
@@ -1943,6 +2037,8 @@
 			
 			if(key == "_mapping")
 				addSpaceGeometryMapping(spaceID, value);
+			
+			Event.fireOut("onSetSpaceData", new object[]{spaceID, key, value});
 		}
 
 		/*
@@ -1952,6 +2048,7 @@
 		{
 			Dbg.DEBUG_MSG("KBEngine::Client_delSpaceData: spaceID(" + spaceID + "), key(" + key + ")");
 			_spacedatas.Remove(key);
+			Event.fireOut("onDelSpaceData", new object[]{spaceID, key});
 		}
 		
 		public string getSpaceData(string key)
@@ -1982,7 +2079,7 @@
 			}
 			
 			if(entity.inWorld)
-				entity.onLeaveWorld();
+				entity.leaveWorld();
 			
 			entities.Remove(eid);
 			entity.onDestroy();
@@ -2035,12 +2132,14 @@
 			entity.position.y = stream.readFloat();
 			entity.position.z = stream.readFloat();
 			
-			entity.direction.z = KBEMath.int82angle((SByte)stream.readFloat(), false) * 360 / ((float)System.Math.PI * 2);
-			entity.direction.y = KBEMath.int82angle((SByte)stream.readFloat(), false) * 360 / ((float)System.Math.PI * 2);
 			entity.direction.x = KBEMath.int82angle((SByte)stream.readFloat(), false) * 360 / ((float)System.Math.PI * 2);
+			entity.direction.y = KBEMath.int82angle((SByte)stream.readFloat(), false) * 360 / ((float)System.Math.PI * 2);
+			entity.direction.z = KBEMath.int82angle((SByte)stream.readFloat(), false) * 360 / ((float)System.Math.PI * 2);
 			
 			Vector3 position = (Vector3)entity.getDefinedPropterty("position");
 			Vector3 direction = (Vector3)entity.getDefinedPropterty("direction");
+			Vector3 old_position = new Vector3(position.x, position.y, position.z);
+			Vector3 old_direction = new Vector3(direction.x, direction.y, direction.z);
 			
 			position.x = entity.position.x;
 			position.y = entity.position.y;
@@ -2050,10 +2149,14 @@
 			direction.y = entity.direction.y;
 			direction.z = entity.direction.z;
 			
-			_entityLastLocalPos = entity.position;
-			_entityLastLocalDir = entity.direction;
-			Event.fireOut("set_direction", new object[]{entity});
-			Event.fireOut("set_position", new object[]{entity});
+			entity.setDefinedPropterty("position", position);
+			entity.setDefinedPropterty("direction", direction);
+			
+			entity._entityLastLocalPos = entity.position;
+			entity._entityLastLocalDir = entity.direction;
+			
+			entity.set_direction(old_direction);
+			entity.set_position(old_position);
 		}
 		
 		public void Client_onUpdateData_ypr(MemoryStream stream)
@@ -2349,9 +2452,12 @@
 				entity.direction.z = KBEMath.int82angle((SByte)yaw, false) * 360 / ((float)System.Math.PI * 2);
 			}
 			
+			bool done = false;
 			if(changeDirection == true)
 			{
-				Event.fireOut("set_direction", new object[]{entity});
+				//@TODO(phw): 在单线程的情况下，我们不需要使用事件来让人知道这个属性的改变
+				//Event.fireOut("set_direction", new object[]{entity});
+				done = true;
 			}
 			
 			if(!KBEMath.almostEqual(x + y + z, 0f, 0.000001f))
@@ -2359,8 +2465,13 @@
 				Vector3 pos = new Vector3(x + _entityServerPos.x, y + _entityServerPos.y, z + _entityServerPos.z);
 				
 				entity.position = pos;
-				Event.fireOut("update_position", new object[]{entity});
+				done = true;
+				//@TODO(phw): 在单线程的情况下，我们不需要使用事件来让人知道这个属性的改变
+				//Event.fireOut("update_position", new object[] { entity });
 			}
+			
+			if(done)
+				entity.onUpdateVolatileData();
 		}
 		
 		/*
@@ -2419,8 +2530,8 @@
 		private Thread _t = null;
 		public KBEThread kbethread = null;
 
-		// 主循环tick间隔
-		public static int HZ_TICK = 100;
+		// 主循环频率
+		public static int threadUpdateHZ = 10;
 		
 		// 插件是否退出
 		private bool _isbreak = false;
@@ -2436,7 +2547,7 @@
 		{
 			base.initialize(args);
 			
-			KBEngineAppThread.HZ_TICK = args.HZ_TICK;
+			KBEngineAppThread.threadUpdateHZ = args.threadUpdateHZ;
 			
 			kbethread = new KBEThread(this);
 			_t = new Thread(new ThreadStart(kbethread.run));
@@ -2484,7 +2595,7 @@
 		{
 			TimeSpan span = DateTime.Now - _lasttime; 
 			
-			int diff = HZ_TICK - span.Milliseconds;
+			int diff = (int)(1000.0 / threadUpdateHZ - span.Milliseconds);
 
 			if(diff < 0)
 				diff = 0;
@@ -2501,7 +2612,7 @@
 			int i = 0;
 			while(!kbethread.over && i < 50)
 			{
-				Thread.Sleep(1);
+				Thread.Sleep(100);
 				i += 1;
 			}
 			

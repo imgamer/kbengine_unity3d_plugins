@@ -5,7 +5,7 @@ using KBEngine;
 
 /*
 	可以理解为插件的入口模块
-	在这个入口中安装了需要监听的事件(installEvents)，同时初始化可KBEngine(initKBEngine)
+	在这个入口中安装了需要监听的事件(installEvents)，同时初始化KBEngine(initKBEngine)
 */
 	
 public class KBEMain : MonoBehaviour 
@@ -19,7 +19,7 @@ public class KBEMain : MonoBehaviour
 	public KBEngineApp.CLIENT_TYPE clientType = KBEngineApp.CLIENT_TYPE.CLIENT_TYPE_MINI;
 	public string persistentDataPath = "Application.persistentDataPath";
 	public bool syncPlayer = true;
-	public int HZ_TICK = 100;
+	public int threadUpdateHZ = 10;
 	public int SEND_BUFFER_MAX = (int)KBEngine.NetworkInterface.TCP_PACKET_MAX;
 	public int RECV_BUFFER_MAX = (int)KBEngine.NetworkInterface.TCP_PACKET_MAX;
 	
@@ -56,10 +56,12 @@ public class KBEMain : MonoBehaviour
 			args.persistentDataPath = persistentDataPath;
 		
 		args.syncPlayer = syncPlayer;
-		args.HZ_TICK = HZ_TICK;
+		args.threadUpdateHZ = threadUpdateHZ;
 		
 		args.SEND_BUFFER_MAX = (UInt32)SEND_BUFFER_MAX;
 		args.RECV_BUFFER_MAX = (UInt32)RECV_BUFFER_MAX;
+		
+		args.isMultiThreads = isMultiThreads;
 		
 		if(isMultiThreads)
 			gameapp = new KBEngineAppThread(args);
@@ -70,7 +72,10 @@ public class KBEMain : MonoBehaviour
 	void OnDestroy()
 	{
 		MonoBehaviour.print("clientapp::OnDestroy(): begin");
-		KBEngineApp.app.destroy();
+        if (KBEngineApp.app != null)
+        {
+            KBEngineApp.app.destroy();
+        }
 		MonoBehaviour.print("clientapp::OnDestroy(): end");
 	}
 	

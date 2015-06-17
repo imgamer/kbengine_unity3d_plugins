@@ -100,7 +100,10 @@
 			{
 				if(first > 0)
 				{
-					Dbg.WARNING_MSG("PacketReceiver::startRecv(): waiting for space! retries=" + first);
+					if(first > 1000)
+						throw new Exception("PacketReceiver::startRecv(): no space!");
+					 
+					Dbg.WARNING_MSG("PacketReceiver::startRecv(): waiting for space, Please adjust 'RECV_BUFFER_MAX'! retries=" + first);
 					System.Threading.Thread.Sleep(5);
 				}
 				
@@ -116,7 +119,7 @@
 			catch (Exception e) 
 			{
 				Dbg.ERROR_MSG("PacketReceiver::startRecv(): call ReceiveAsync() is err: " + e.ToString());
-				_networkInterface.close();
+				Event.fireIn("_closeNetwork", new object[]{_networkInterface});
 			}
 		}
 		
@@ -148,7 +151,7 @@
 		        	if (bytesRead == 0) 
 		        	{
 		        		Dbg.WARNING_MSG(string.Format("PacketReceiver::_processRecved(): disconnect!"));
-		        		state.networkInterface().close();
+		        		Event.fireIn("_closeNetwork", new object[]{state.networkInterface()});
 		        		return;
 		        	}
 		        	else
@@ -160,7 +163,7 @@
 			catch (Exception e) 
 			{
 				Dbg.ERROR_MSG(string.Format("PacketReceiver::_processRecved(): is error({0})!", e.ToString()));
-				state.networkInterface().close();
+				Event.fireIn("_closeNetwork", new object[]{state.networkInterface()});
 			}
 		}
 	}

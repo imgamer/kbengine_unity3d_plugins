@@ -11,6 +11,11 @@
 	*/
     public class Entity 
     {
+		// 当前玩家最后一次同步到服务端的位置与朝向
+		// 这两个属性是给引擎KBEngine.cs用的，别的地方不要修改
+		public Vector3 _entityLastLocalPos = new Vector3(0f, 0f, 0f);
+		public Vector3 _entityLastLocalDir = new Vector3(0f, 0f, 0f);
+		
     	public Int32 id = 0;
 		public string className = "";
 		public Vector3 position = new Vector3(0.0f, 0.0f, 0.0f);
@@ -25,10 +30,13 @@
 		public Mailbox cellMailbox = null;
 		
 		public bool inWorld = false;
+
+		/// <summary>
+		/// This property is True if it is a client-only entity.
+		/// </summary>
+		public bool isClientOnly = false;
 		
-		public static Dictionary<string, Dictionary<string, Property>> alldefpropertys = 
-			new Dictionary<string, Dictionary<string, Property>>();
-		
+		// entityDef属性，服务端同步过来后存储在这里
 		private Dictionary<string, Property> defpropertys_ = 
 			new Dictionary<string, Property>();
 		
@@ -37,20 +45,20 @@
 		
 		public static void clear()
 		{
-			alldefpropertys.Clear();
 		}
 		
 		public Entity()
 		{
-			Dictionary<string, Property> datas = alldefpropertys[GetType().Name];
-			foreach(Property e in datas.Values)
+			foreach(Property e in EntityDef.moduledefs[GetType().Name].propertys.Values)
 			{
 				Property newp = new Property();
 				newp.name = e.name;
-				newp.properUtype = e.properUtype;
 				newp.utype = e.utype;
-				newp.val = e.val;
+				newp.properUtype = e.properUtype;
+				newp.aliasID = e.aliasID;
+				newp.defaultValStr = e.defaultValStr;
 				newp.setmethod = e.setmethod;
+				newp.val = newp.utype.parseDefaultValStr(newp.defaultValStr);
 				defpropertys_.Add(e.name, newp);
 				iddefpropertys_.Add(e.properUtype, newp);
 			}
@@ -111,15 +119,21 @@
 		{
 		}
 
-		public void baseCall(string methodname, object[] arguments)
+		public void baseCall(string methodname, params object[] arguments)
 		{			
 			if(KBEngineApp.app.currserver == "loginapp")
 			{
 				Dbg.ERROR_MSG(className + "::baseCall(" + methodname + "), currserver=!" + KBEngineApp.app.currserver);  
 				return;
 			}
+
+			Method method = null;
+			if(!EntityDef.moduledefs[className].base_methods.TryGetValue(methodname, out method))
+			{
+				Dbg.ERROR_MSG(className + "::baseCall(" + methodname + "), not found method!");  
+				return;
+			}
 			
-			Method method = EntityDef.moduledefs[className].base_methods[methodname];
 			UInt16 methodID = method.methodUtype;
 			
 			if(arguments.Length != method.args.Count)
@@ -135,12 +149,19 @@
 			{
 				for(var i=0; i<method.args.Count; i++)
 				{
-					method.args[i].addToStream(baseMailbox.bundle, arguments[i]);
+					if(method.args[i].isSameType(arguments[i]))
+					{
+						method.args[i].addToStream(baseMailbox.bundle, arguments[i]);
+					}
+					else
+					{
+						throw new Exception("arg" + i + ": " + method.args[i].ToString());
+					}
 				}
 			}
 			catch(Exception e)
 			{
-				Dbg.ERROR_MSG(className + "::baseCall(" + methodname + "): args is error(" + e.Message + ")!");  
+				Dbg.ERROR_MSG(className + "::baseCall(method=" + methodname + "): args is error(" + e.Message + ")!");  
 				baseMailbox.bundle = null;
 				return;
 			}
@@ -148,7 +169,7 @@
 			baseMailbox.postMail(null);
 		}
 		
-		public void cellCall(string methodname, object[] arguments)
+		public void cellCall(string methodname, params object[] arguments)
 		{
 			if(KBEngineApp.app.currserver == "loginapp")
 			{
@@ -156,7 +177,13 @@
 				return;
 			}
 			
-			Method method = EntityDef.moduledefs[className].cell_methods[methodname];
+			Method method = null;
+			if(!EntityDef.moduledefs[className].cell_methods.TryGetValue(methodname, out method))
+			{
+				Dbg.ERROR_MSG(className + "::cellCall(" + methodname + "), not found method!");  
+				return;
+			}
+			
 			UInt16 methodID = method.methodUtype;
 			
 			if(arguments.Length != method.args.Count)
@@ -164,7 +191,13 @@
 				Dbg.ERROR_MSG(className + "::cellCall(" + methodname + "): args(" + (arguments.Length) + "!= " + method.args.Count + ") size is error!");  
 				return;
 			}
-
+			
+			if(cellMailbox == null)
+			{
+				Dbg.ERROR_MSG(className + "::cellCall(" + methodname + "): no cell!");  
+				return;
+			}
+			
 			cellMailbox.newMail();
 			cellMailbox.bundle.writeUint16(methodID);
 				
@@ -172,7 +205,14 @@
 			{
 				for(var i=0; i<method.args.Count; i++)
 				{
-					method.args[i].addToStream(cellMailbox.bundle, arguments[i]);
+					if(method.args[i].isSameType(arguments[i]))
+					{
+						method.args[i].addToStream(cellMailbox.bundle, arguments[i]);
+					}
+					else
+					{
+						throw new Exception("arg" + i + ": " + method.args[i].ToString());
+					}
 				}
 			}
 			catch(Exception e)
@@ -185,47 +225,104 @@
 			cellMailbox.postMail(null);
 		}
 	
+		public void enterWorld()
+		{
+			// Dbg.DEBUG_MSG(className + "::enterWorld(" + getDefinedPropterty("uid") + "): " + id); 
+			inWorld = true;
+			
+			try{
+				onEnterWorld();
+			}
+			catch (Exception e)
+			{
+				Dbg.ERROR_MSG(className + "::onEnterWorld: error=" + e.ToString());
+			}
+
+			Event.fireOut("onEnterWorld", new object[]{this});
+		}
+		
 		public virtual void onEnterWorld()
 		{
-			Dbg.DEBUG_MSG(className + "::onEnterWorld(" + getDefinedPropterty("uid") + "): " + id); 
-			inWorld = true;
-			Event.fireOut("onEnterWorld", new object[]{this});
+		}
+
+		public void leaveWorld()
+		{
+			// Dbg.DEBUG_MSG(className + "::leaveWorld: " + id); 
+			inWorld = false;
+			
+			try{
+				onLeaveWorld();
+			}
+			catch (Exception e)
+			{
+				Dbg.ERROR_MSG(className + "::onLeaveWorld: error=" + e.ToString());
+			}
+
+			Event.fireOut("onLeaveWorld", new object[]{this});
 		}
 		
 		public virtual void onLeaveWorld()
 		{
-			Dbg.DEBUG_MSG(className + "::onLeaveWorld: " + id); 
-			inWorld = false;
-			Event.fireOut("onLeaveWorld", new object[]{this});
 		}
 
-		public virtual void onEnterSpace()
+		public virtual void enterSpace()
 		{
-			Dbg.DEBUG_MSG(className + "::onEnterSpace(" + getDefinedPropterty("uid") + "): " + id); 
+			// Dbg.DEBUG_MSG(className + "::enterSpace(" + getDefinedPropterty("uid") + "): " + id); 
 			inWorld = true;
+			
+			try{
+				onEnterSpace();
+			}
+			catch (Exception e)
+			{
+				Dbg.ERROR_MSG(className + "::onEnterSpace: error=" + e.ToString());
+			}
+			
 			Event.fireOut("onEnterSpace", new object[]{this});
 		}
 		
+		public virtual void onEnterSpace()
+		{
+		}
+		
+		public virtual void leaveSpace()
+		{
+			// Dbg.DEBUG_MSG(className + "::leaveSpace: " + id); 
+			inWorld = false;
+			
+			try{
+				onLeaveSpace();
+			}
+			catch (Exception e)
+			{
+				Dbg.ERROR_MSG(className + "::onLeaveSpace: error=" + e.ToString());
+			}
+			
+			Event.fireOut("onLeaveSpace", new object[]{this});
+		}
+
 		public virtual void onLeaveSpace()
 		{
-			Dbg.DEBUG_MSG(className + "::onLeaveSpace: " + id); 
-			inWorld = false;
-			Event.fireOut("onLeaveSpace", new object[]{this});
 		}
 		
 		public virtual void set_position(object old)
 		{
 			Vector3 v = (Vector3)getDefinedPropterty("position");
 			position = v;
-			Dbg.DEBUG_MSG(className + "::set_position: " + old + " => " + v); 
+			//Dbg.DEBUG_MSG(className + "::set_position: " + old + " => " + v); 
 			
 			if(isPlayer())
 				KBEngineApp.app.entityServerPos(position);
-			
-			Event.fireOut("set_position", new object[]{this});
+
+			//@TODO(phw): 在单线程的情况下，我们不需要使用事件来让人知道这个属性的改变
+			//if (inWorld)
+			//	Event.fireOut("set_position", new object[]{this});
 		}
 
-
+		public virtual void onUpdateVolatileData()
+		{
+		}
+		
 		public virtual void set_direction(object old)
 		{
 			Vector3 v = (Vector3)getDefinedPropterty("direction");
@@ -236,8 +333,21 @@
 			
 			direction = v;
 			
-			Dbg.DEBUG_MSG(className + "::set_direction: " + old + " => " + v); 
-			Event.fireOut("set_direction", new object[]{this});
+			//Dbg.DEBUG_MSG(className + "::set_direction: " + old + " => " + v); 
+			
+			//@TODO(phw): 在单线程的情况下，我们不需要使用事件来让人知道这个属性的改变
+			//if(inWorld)
+			//	Event.fireOut("set_direction", new object[]{this});
+		}
+
+		/// <summary>
+		/// This callback method is called when the local entity control by the client has been enabled or disabled. 
+		/// See the Entity.controlledBy() method in the CellApp server code for more infomation.
+		/// </summary>
+		/// <param name="isControlled">Whether the entity is now controlled locally</param>
+		public virtual void onControlled(bool isControlled)
+		{
+		
 		}
     }
     

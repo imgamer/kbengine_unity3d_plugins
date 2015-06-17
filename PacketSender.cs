@@ -51,15 +51,18 @@
 		{
 			if(datas.Length <= 0)
 				return true;
-			
+
 			bool startSend = false;
 			if(Interlocked.CompareExchange(ref _sending, 1, 0) == 0)
 			{
 				startSend = true;
-				_wpos = 0;
-				_spos = 0;
+				if(_wpos == _spos)
+				{
+					_wpos = 0;
+					_spos = 0;
+				}
 			}
-			
+
 			int t_spos = Interlocked.Add(ref _spos, 0);
 			int space = 0;
 			int tt_wpos = _wpos % _buffer.Length;
@@ -69,15 +72,15 @@
 				space = _buffer.Length - tt_wpos + tt_spos - 1;
 			else
 				space = tt_spos - tt_wpos - 1;
-			
+
 			if (datas.Length > space)
 			{
-				Dbg.ERROR_MSG("PacketSender::send(): no space! data(" + datas.Length 
+				Dbg.ERROR_MSG("PacketSender::send(): no space, Please adjust 'SEND_BUFFER_MAX'! data(" + datas.Length 
 					+ ") > space(" + space + "), wpos=" + _wpos + ", spos=" + t_spos);
 				
 				return false;
 			}
-			
+
 			int expect_total = tt_wpos + datas.Length;
 			if(expect_total <= _buffer.Length)
 			{
@@ -89,14 +92,14 @@
 				Array.Copy(datas, 0, _buffer, tt_wpos, remain);
 				Array.Copy(datas, remain, _buffer, 0, expect_total - _buffer.Length);
 			}
-			
+
 			Interlocked.Add(ref _wpos, datas.Length);
 
 			if(startSend)
 			{
 				_startSend();
 			}
-			
+
 			return true;
 		}
 		
@@ -118,7 +121,7 @@
 			catch (Exception e) 
 			{
 				Dbg.ERROR_MSG("PacketSender::startSend(): is err: " + e.ToString());
-				_networkInterface.close();
+				Event.fireIn("_closeNetwork", new object[]{_networkInterface});
 			}
 		}
 		
@@ -155,7 +158,7 @@
 			catch (Exception e) 
 			{
 				Dbg.ERROR_MSG(string.Format("PacketSender::_processSent(): is error({0})!", e.ToString()));
-				state.networkInterface().close();
+				Event.fireIn("_closeNetwork", new object[]{state.networkInterface()});
 				Interlocked.Exchange(ref state._sending, 0);
 			}
 		}
