@@ -313,10 +313,9 @@
 			
 			if(isPlayer())
 				KBEngineApp.app.entityServerPos(position);
-
-			//@TODO(phw): 在单线程的情况下，我们不需要使用事件来让人知道这个属性的改变
-			//if (inWorld)
-			//	Event.fireOut("set_position", new object[]{this});
+			
+			if(inWorld)
+				Event.fireOut("set_position", new object[]{this});
 		}
 
 		public virtual void onUpdateVolatileData()
@@ -335,9 +334,8 @@
 			
 			//Dbg.DEBUG_MSG(className + "::set_direction: " + old + " => " + v); 
 			
-			//@TODO(phw): 在单线程的情况下，我们不需要使用事件来让人知道这个属性的改变
-			//if(inWorld)
-			//	Event.fireOut("set_direction", new object[]{this});
+			if(inWorld)
+				Event.fireOut("set_direction", new object[]{this});
 		}
 
 		/// <summary>

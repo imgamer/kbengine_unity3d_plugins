@@ -1074,21 +1074,6 @@
 
 			return e.name + " [" + e.descr + "]";
 		}
-
-        /*
-             通过错误id得到错误描述
-        */
-        public string serverError(UInt16 id)
-        {
-            ServerErr e;
-
-            if (!serverErrs.TryGetValue(id, out e))
-            {
-                return "";
-            }
-
-            return e.descr;
-        }
 	
 		/*
 			从服务端返回的二进制流导入客户端消息协议
@@ -1795,6 +1780,7 @@
 		public void Client_onEntityEnterSpace(MemoryStream stream)
 		{
 			Int32 eid = stream.readInt32();
+			spaceID = stream.readUint32();
 			
 			sbyte isOnGound = 1;
 			
@@ -2455,8 +2441,7 @@
 			bool done = false;
 			if(changeDirection == true)
 			{
-				//@TODO(phw): 在单线程的情况下，我们不需要使用事件来让人知道这个属性的改变
-				//Event.fireOut("set_direction", new object[]{entity});
+				Event.fireOut("set_direction", new object[]{entity});
 				done = true;
 			}
 			
@@ -2466,8 +2451,7 @@
 				
 				entity.position = pos;
 				done = true;
-				//@TODO(phw): 在单线程的情况下，我们不需要使用事件来让人知道这个属性的改变
-				//Event.fireOut("update_position", new object[] { entity });
+				Event.fireOut("update_position", new object[]{entity});
 			}
 			
 			if(done)
