@@ -1849,16 +1849,21 @@
 				return;
 			}
 
-			if (isControlled != 0)
-			{
+			var isCont = isControlled != 0;
+			if (isCont)
 				_controlledEntities.Add(entity);
-				entity.onControlled(true);
-			}
 			else
-			{
 				_controlledEntities.Remove(entity);
-				entity.onControlled(false);
+
+			try
+			{
+				entity.onControlled(isCont);
 			}
+			catch (Exception e)
+			{
+				Dbg.ERROR_MSG(string.Format("KBEngine::Client_onControlEntity: entity id = '{0}', is controlled = '{1}', error = '{1}'", eid, isCont, e));
+			}
+
 		}
 
 		/*
