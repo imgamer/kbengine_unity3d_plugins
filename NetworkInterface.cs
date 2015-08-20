@@ -22,7 +22,7 @@
     	public const int TCP_PACKET_MAX = 1460;
     	public delegate void ConnectCallback(string ip, int port, bool success, object userData);
     	
-        Socket _socket = null;
+        protected Socket _socket = null;
 		PacketReceiver _packetReceiver = null;
 		PacketSender _packetSender = null;
 		
@@ -43,10 +43,11 @@
         	reset();
         }
 		
-		public void reset()
+		public virtual void reset()
 		{
 			if(valid())
 			{
+				Dbg.DEBUG_MSG(string.Format("NetworkInterface::reset(), close socket from '{0}'", _socket.RemoteEndPoint.ToString()));
          	   _socket.Close(0);
 			}
 			_socket = null;
@@ -54,22 +55,22 @@
 			_packetSender = null;
 		}
 		
-		public Socket sock()
+		public virtual Socket sock()
 		{
 			return _socket;
 		}
 		
-		public PacketReceiver packetReceiver()
+		public virtual PacketReceiver packetReceiver()
 		{
 			return _packetReceiver;
 		}
 		
-		public bool valid()
+		public virtual bool valid()
 		{
 			return ((_socket != null) && (_socket.Connected == true));
 		}
 		
-		public void _onConnectStatus(ConnectState state)
+		public virtual void _onConnectStatus(ConnectState state)
 		{
 			KBEngine.Event.deregisterIn(this);
 			
@@ -112,7 +113,7 @@
 			}
 		}
 	    
-		public void connectTo(string ip, int port, ConnectCallback callback, object userData) 
+		public virtual void connectTo(string ip, int port, ConnectCallback callback, object userData) 
 		{
 			if (valid())
 				throw new InvalidOperationException( "Have already connected!" );
@@ -151,7 +152,7 @@
             }
 		}
         
-        public void close()
+		public virtual void close()
         {
            if(_socket != null)
 			{
@@ -163,7 +164,7 @@
             _socket = null;
         }
 
-        public bool send(byte[] datas)
+        public virtual bool send(byte[] datas)
         {
 			if(!valid()) 
 			{
@@ -186,7 +187,7 @@
 			return false;
         }
         
-        public void process()
+		public virtual void process()
         {
         	if(!valid())
         		return;

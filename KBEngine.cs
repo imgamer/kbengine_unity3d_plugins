@@ -156,8 +156,8 @@
 		public virtual bool initialize(KBEngineArgs args)
 		{
 			_args = args;
-			
-        	initNetwork();
+
+			Message.bindFixedMessage();
 
             // 注册事件
             installEvents();
@@ -167,12 +167,6 @@
          	   _persistentInofs = new PersistentInofs(args.persistentDataPath);
          	
          	return true;
-		}
-		
-		void initNetwork()
-		{
-			Message.bindFixedMessage();
-        	_networkInterface = new NetworkInterface();
 		}
 		
 		void installEvents()
@@ -254,8 +248,9 @@
 			spaceResPath = "";
 			isLoadedGeometry = false;
 			
-			_networkInterface.reset();
-			_networkInterface = new NetworkInterface();
+			if (_networkInterface != null)
+				_networkInterface.reset();
+			_networkInterface = new NetworkInterface2();
 			
 			_spacedatas.Clear();
 		}
@@ -341,7 +336,8 @@
 			Task.updateAll();
 		
 			// 处理网络
-			_networkInterface.process();
+			if (_networkInterface != null)
+				_networkInterface.process();
 			
 			// 处理外层抛入的事件
 			Event.processInEvents();
@@ -372,7 +368,7 @@
 		*/
 		public void sendTick()
 		{
-			if(!_networkInterface.valid())
+			if(_networkInterface == null || !_networkInterface.valid())
 				return;
 
 			if(!loginappMessageImported_ && !baseappMessageImported_)
@@ -607,7 +603,7 @@
 				Event.fireAll("login_baseapp", new object[]{});
 				
 				_networkInterface.reset();
-				_networkInterface = new NetworkInterface();
+				_networkInterface = new NetworkInterface2();
 				_networkInterface.connectTo(baseappIP, baseappPort, onConnectTo_baseapp_callback, null);
 			}
 			else
