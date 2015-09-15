@@ -11,6 +11,11 @@
 	*/
     public class Entity 
     {
+		// 当前玩家最后一次同步到服务端的位置与朝向
+		// 这两个属性是给引擎KBEngine.cs用的，别的地方不要修改
+		public Vector3 _entityLastLocalPos = new Vector3(0f, 0f, 0f);
+		public Vector3 _entityLastLocalDir = new Vector3(0f, 0f, 0f);
+		
     	public Int32 id = 0;
 		public string className = "";
 		public Vector3 position = new Vector3(0.0f, 0.0f, 0.0f);
@@ -25,6 +30,11 @@
 		public Mailbox cellMailbox = null;
 		
 		public bool inWorld = false;
+
+		/// <summary>
+		/// This property is True if it is a client-only entity.
+		/// </summary>
+		public bool isClientOnly = false;
 		
 		// entityDef属性，服务端同步过来后存储在这里
 		private Dictionary<string, Property> defpropertys_ = 
@@ -326,6 +336,16 @@
 			
 			if(inWorld)
 				Event.fireOut("set_direction", new object[]{this});
+		}
+
+		/// <summary>
+		/// This callback method is called when the local entity control by the client has been enabled or disabled. 
+		/// See the Entity.controlledBy() method in the CellApp server code for more infomation.
+		/// </summary>
+		/// <param name="isControlled">Whether the entity is now controlled locally</param>
+		public virtual void onControlled(bool isControlled)
+		{
+		
 		}
     }
     

@@ -97,10 +97,13 @@
 		public UInt64 entity_uuid = 0;
 		public Int32 entity_id = 0;
 		public string entity_type = "";
+
+		// 本地entity id（以负数表示本地的entity id）
+		private Int32 lastLocaleEntityID = -1;
+
+		private List<Entity> _controlledEntities = new List<Entity>();
 		
-		// 当前玩家最后一次同步到服务端的位置与朝向与服务端最后一次同步过来的位置
-		private Vector3 _entityLastLocalPos = new Vector3(0f, 0f, 0f);
-		private Vector3 _entityLastLocalDir = new Vector3(0f, 0f, 0f);
+		// 当前服务端最后一次同步过来的玩家位置
 		private Vector3 _entityServerPos = new Vector3(0f, 0f, 0f);
 		
 		// space的数据，具体看API手册关于spaceData
@@ -153,8 +156,8 @@
 		public virtual bool initialize(KBEngineArgs args)
 		{
 			_args = args;
-			
-        	initNetwork();
+
+			Message.bindFixedMessage();
 
             // 注册事件
             installEvents();
@@ -164,12 +167,6 @@
          	   _persistentInofs = new PersistentInofs(args.persistentDataPath);
          	
          	return true;
-		}
-		
-		void initNetwork()
-		{
-			Message.bindFixedMessage();
-        	_networkInterface = new NetworkInterface();
 		}
 		
 		void installEvents()
@@ -251,12 +248,80 @@
 			spaceResPath = "";
 			isLoadedGeometry = false;
 			
-			_networkInterface.reset();
-			_networkInterface = new NetworkInterface();
+			if (_networkInterface != null)
+				_networkInterface.reset();
+			_networkInterface = new NetworkInterface2();
 			
 			_spacedatas.Clear();
 		}
+
+		public Int32 addTimer( float start, float interval, KBEngine.Timer.TimerCallback function, object userdata )
+		{
+
+			KBEngine.Timer t = new KBEngine.Timer( start, interval, function, userdata );
+			return t.start();
+		}
+
+		public Int32 addTimer( float start, float interval, KBEngine.Timer.TimerCallback function )
+		{
+			KBEngine.Timer t = new KBEngine.Timer( start, interval, function, null );
+			return t.start();
+		}
 		
+		public Int32 addTimer( float start, KBEngine.Timer.TimerCallback function )
+		{
+			KBEngine.Timer t = new KBEngine.Timer( start, 0.0f, function, null );
+			return t.start();
+		}
+
+		public void cancelTimer( Int32 timerID )
+		{
+			Task.remove( timerID );
+		}
+
+		/// <summary>
+		/// 创建一个本地Entity
+		/// </summary>
+		public Entity createEntity( string className, Vector3 position, Vector3 direction )
+		{
+			var eid = lastLocaleEntityID--;
+
+			string entityType = className;
+			// Dbg.DEBUG_MSG("KBEngine::Client_onEntityEnterWorld: " + entityType + "(" + eid + "), spaceID(" + KBEngineApp.app.spaceID + ")!");
+
+			if (entities.ContainsKey(eid) || _bufferedCreateEntityMessage.ContainsKey(eid))
+			{
+				Dbg.ERROR_MSG("KBEngine::createEntity: entity id (" + eid + ") already existed!");
+				return null;
+			}
+
+			ScriptModule module = null;
+			if (!EntityDef.moduledefs.TryGetValue(entityType, out module))
+			{
+				Dbg.ERROR_MSG("KBEngine::Client_onCreatedProxies: not found module(" + entityType + ")!");
+			}
+
+			Type runclass = module.script;
+			if (runclass == null)
+				return null;
+
+			var entity = (Entity)Activator.CreateInstance(runclass);
+			entity.id = eid;
+			entity.className = entityType;
+
+			entities[eid] = entity;
+
+			entity.position.Set(position.x, position.y, position.z);
+			entity.direction.Set(direction.x, direction.y, direction.z);
+
+			entity.isClientOnly = true;
+			entity.isOnGound = true;
+			entity.__init__();
+			entity.enterWorld();
+
+			return entity;
+		}
+
 		public static bool validEmail(string strEmail) 
 		{ 
 			return Regex.IsMatch(strEmail, @"^([\w-\.]+)@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.)
@@ -268,8 +333,11 @@
 		*/
 		public virtual void process()
 		{
+			Task.updateAll();
+		
 			// 处理网络
-			_networkInterface.process();
+			if (_networkInterface != null)
+				_networkInterface.process();
 			
 			// 处理外层抛入的事件
 			Event.processInEvents();
@@ -300,7 +368,7 @@
 		*/
 		public void sendTick()
 		{
-			if(!_networkInterface.valid())
+			if(_networkInterface == null || !_networkInterface.valid())
 				return;
 
 			if(!loginappMessageImported_ && !baseappMessageImported_)
@@ -535,7 +603,7 @@
 				Event.fireAll("login_baseapp", new object[]{});
 				
 				_networkInterface.reset();
-				_networkInterface = new NetworkInterface();
+				_networkInterface = new NetworkInterface2();
 				_networkInterface.connectTo(baseappIP, baseappPort, onConnectTo_baseapp_callback, null);
 			}
 			else
@@ -1773,6 +1841,36 @@
 		}
 
 		/*
+			告诉客户端：你当前负责（或取消）控制谁的位移同步
+		*/
+		public void Client_onControlEntity(Int32 eid, sbyte isControlled)
+		{
+			Entity entity = null;
+
+			if (!entities.TryGetValue(eid, out entity))
+			{
+				Dbg.ERROR_MSG("KBEngine::Client_onControlEntity: entity(" + eid + ") not found!");
+				return;
+			}
+
+			var isCont = isControlled != 0;
+			if (isCont)
+				_controlledEntities.Add(entity);
+			else
+				_controlledEntities.Remove(entity);
+
+			try
+			{
+				entity.onControlled(isCont);
+			}
+			catch (Exception e)
+			{
+				Dbg.ERROR_MSG(string.Format("KBEngine::Client_onControlEntity: entity id = '{0}', is controlled = '{1}', error = '{1}'", eid, isCont, e));
+			}
+
+		}
+
+		/*
 			更新当前玩家的位置与朝向到服务端， 可以通过开关_syncPlayer关闭这个机制
 		*/
 		public void updatePlayerToServer()
@@ -1796,13 +1894,13 @@
 			Vector3 position = playerEntity.position;
 			Vector3 direction = playerEntity.direction;
 			
-			bool posHasChanged = Vector3.Distance(_entityLastLocalPos, position) > 0.001f;
-			bool dirHasChanged = Vector3.Distance(_entityLastLocalDir, direction) > 0.001f;
+			bool posHasChanged = Vector3.Distance(playerEntity._entityLastLocalPos, position) > 0.001f;
+			bool dirHasChanged = Vector3.Distance(playerEntity._entityLastLocalDir, direction) > 0.001f;
 			
 			if(posHasChanged || dirHasChanged)
 			{
-				_entityLastLocalPos = position;
-				_entityLastLocalDir = direction;
+				playerEntity._entityLastLocalPos = position;
+				playerEntity._entityLastLocalDir = direction;
 				
 				Bundle bundle = new Bundle();
 				bundle.newMessage(Message.messages["Baseapp_onUpdateDataFromClient"]);
@@ -1816,6 +1914,35 @@
 				bundle.writeUint8((Byte)(playerEntity.isOnGound == true ? 1 : 0));
 				bundle.writeUint32(spaceID);
 				bundle.send(_networkInterface);
+			}
+
+			foreach (var entity in _controlledEntities)
+			{
+				position = entity.position;
+				direction = entity.direction;
+
+				posHasChanged = Vector3.Distance(entity._entityLastLocalPos, position) > 0.001f;
+				dirHasChanged = Vector3.Distance(entity._entityLastLocalDir, direction) > 0.001f;
+
+				if (posHasChanged || dirHasChanged)
+				{
+					entity._entityLastLocalPos = position;
+					entity._entityLastLocalDir = direction;
+
+					Bundle bundle = new Bundle();
+					bundle.newMessage(Message.messages["Baseapp_onUpdateDataFromClientForControlledEntity"]);
+					bundle.writeInt32(entity.id);
+					bundle.writeFloat(position.x);
+					bundle.writeFloat(position.y);
+					bundle.writeFloat(position.z);
+
+					bundle.writeFloat((float)((double)direction.x / 360 * 6.283185307179586));
+					bundle.writeFloat((float)((double)direction.y / 360 * 6.283185307179586));
+					bundle.writeFloat((float)((double)direction.z / 360 * 6.283185307179586));
+					bundle.writeUint8((Byte)(entity.isOnGound == true ? 1 : 0));
+					bundle.writeUint32(spaceID);
+					bundle.send(_networkInterface);
+				}
 			}
 		}
 
@@ -1840,6 +1967,7 @@
 			clearEntities(isall);
 			isLoadedGeometry = false;
 			spaceID = 0;
+			_controlledEntities.Clear();
 		}
 		
 		public void clearEntities(bool isall)
@@ -2019,8 +2147,8 @@
 			entity.setDefinedPropterty("position", position);
 			entity.setDefinedPropterty("direction", direction);
 			
-			_entityLastLocalPos = entity.position;
-			_entityLastLocalDir = entity.direction;
+			entity._entityLastLocalPos = entity.position;
+			entity._entityLastLocalDir = entity.direction;
 			
 			entity.set_direction(old_direction);
 			entity.set_position(old_position);
