@@ -83,7 +83,7 @@
 		
 		// 服务端与客户端的版本号以及协议MD5
 		public string serverVersion = "";
-		public string clientVersion = "0.6.1";
+		public string clientVersion = "0.6.15";
 		public string serverScriptVersion = "";
 		public string clientScriptVersion = "0.1.0";
 		public string serverProtocolMD5 = "";
@@ -97,13 +97,10 @@
 		public UInt64 entity_uuid = 0;
 		public Int32 entity_id = 0;
 		public string entity_type = "";
-
-		// 本地entity id（以负数表示本地的entity id）
-		private Int32 lastLocaleEntityID = -1;
-
-		private List<Entity> _controlledEntities = new List<Entity>();
 		
-		// 当前服务端最后一次同步过来的玩家位置
+		// 当前玩家最后一次同步到服务端的位置与朝向与服务端最后一次同步过来的位置
+		private Vector3 _entityLastLocalPos = new Vector3(0f, 0f, 0f);
+		private Vector3 _entityLastLocalDir = new Vector3(0f, 0f, 0f);
 		private Vector3 _entityServerPos = new Vector3(0f, 0f, 0f);
 		
 		// space的数据，具体看API手册关于spaceData
@@ -156,8 +153,8 @@
 		public virtual bool initialize(KBEngineArgs args)
 		{
 			_args = args;
-
-			Message.bindFixedMessage();
+			
+        	initNetwork();
 
             // 注册事件
             installEvents();
@@ -167,6 +164,12 @@
          	   _persistentInofs = new PersistentInofs(args.persistentDataPath);
          	
          	return true;
+		}
+		
+		void initNetwork()
+		{
+			Message.bindFixedMessage();
+        	_networkInterface = new NetworkInterface();
 		}
 		
 		void installEvents()
@@ -248,80 +251,12 @@
 			spaceResPath = "";
 			isLoadedGeometry = false;
 			
-			if (_networkInterface != null)
-				_networkInterface.reset();
-			_networkInterface = new NetworkInterface2();
+			_networkInterface.reset();
+			_networkInterface = new NetworkInterface();
 			
 			_spacedatas.Clear();
 		}
-
-		public Int32 addTimer( float start, float interval, KBEngine.Timer.TimerCallback function, object userdata )
-		{
-
-			KBEngine.Timer t = new KBEngine.Timer( start, interval, function, userdata );
-			return t.start();
-		}
-
-		public Int32 addTimer( float start, float interval, KBEngine.Timer.TimerCallback function )
-		{
-			KBEngine.Timer t = new KBEngine.Timer( start, interval, function, null );
-			return t.start();
-		}
 		
-		public Int32 addTimer( float start, KBEngine.Timer.TimerCallback function )
-		{
-			KBEngine.Timer t = new KBEngine.Timer( start, 0.0f, function, null );
-			return t.start();
-		}
-
-		public void cancelTimer( Int32 timerID )
-		{
-			Task.remove( timerID );
-		}
-
-		/// <summary>
-		/// 创建一个本地Entity
-		/// </summary>
-		public Entity createEntity( string className, Vector3 position, Vector3 direction )
-		{
-			var eid = lastLocaleEntityID--;
-
-			string entityType = className;
-			// Dbg.DEBUG_MSG("KBEngine::Client_onEntityEnterWorld: " + entityType + "(" + eid + "), spaceID(" + KBEngineApp.app.spaceID + ")!");
-
-			if (entities.ContainsKey(eid) || _bufferedCreateEntityMessage.ContainsKey(eid))
-			{
-				Dbg.ERROR_MSG("KBEngine::createEntity: entity id (" + eid + ") already existed!");
-				return null;
-			}
-
-			ScriptModule module = null;
-			if (!EntityDef.moduledefs.TryGetValue(entityType, out module))
-			{
-				Dbg.ERROR_MSG("KBEngine::Client_onCreatedProxies: not found module(" + entityType + ")!");
-			}
-
-			Type runclass = module.script;
-			if (runclass == null)
-				return null;
-
-			var entity = (Entity)Activator.CreateInstance(runclass);
-			entity.id = eid;
-			entity.className = entityType;
-
-			entities[eid] = entity;
-
-			entity.position.Set(position.x, position.y, position.z);
-			entity.direction.Set(direction.x, direction.y, direction.z);
-
-			entity.isClientOnly = true;
-			entity.isOnGound = true;
-			entity.__init__();
-			entity.enterWorld();
-
-			return entity;
-		}
-
 		public static bool validEmail(string strEmail) 
 		{ 
 			return Regex.IsMatch(strEmail, @"^([\w-\.]+)@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.)
@@ -333,11 +268,8 @@
 		*/
 		public virtual void process()
 		{
-			Task.updateAll();
-		
 			// 处理网络
-			if (_networkInterface != null)
-				_networkInterface.process();
+			_networkInterface.process();
 			
 			// 处理外层抛入的事件
 			Event.processInEvents();
@@ -368,7 +300,7 @@
 		*/
 		public void sendTick()
 		{
-			if(_networkInterface == null || !_networkInterface.valid())
+			if(!_networkInterface.valid())
 				return;
 
 			if(!loginappMessageImported_ && !baseappMessageImported_)
@@ -603,7 +535,7 @@
 				Event.fireAll("login_baseapp", new object[]{});
 				
 				_networkInterface.reset();
-				_networkInterface = new NetworkInterface2();
+				_networkInterface = new NetworkInterface();
 				_networkInterface.connectTo(baseappIP, baseappPort, onConnectTo_baseapp_callback, null);
 			}
 			else
@@ -777,16 +709,36 @@
 		/*
 			从二进制流创建entitydef支持的数据类型
 		*/
+		public void createDataTypeFromStreams(MemoryStream stream, bool canprint)
+		{
+			UInt16 aliassize = stream.readUint16();
+			Dbg.DEBUG_MSG("KBEngine::createDataTypeFromStreams: importAlias(size=" + aliassize + ")!");
+			
+			while(aliassize > 0)
+			{
+				aliassize--;
+				createDataTypeFromStream(stream, canprint);
+			};
+		
+			foreach(string datatype in EntityDef.datatypes.Keys)
+			{
+				if(EntityDef.datatypes[datatype] != null)
+				{
+					EntityDef.datatypes[datatype].bind();
+				}
+			}			
+		}
+			
 		public void createDataTypeFromStream(MemoryStream stream, bool canprint)
 		{
 			UInt16 utype = stream.readUint16();
 			string name = stream.readString();
 			string valname = stream.readString();
 			
-			//if(canprint)
-			//	Dbg.DEBUG_MSG("KBEngine::Client_onImportClientEntityDef: importAlias(" + name + ":" + valname + ")!");
+			if(canprint)
+				Dbg.DEBUG_MSG("KBEngine::Client_onImportClientEntityDef: importAlias(" + name + ":" + valname + ":" + utype + ")!");
 			
-			if(valname == "FIXED_DICT")
+			if(name == "FIXED_DICT")
 			{
 				KBEDATATYPE_FIXED_DICT datatype = new KBEDATATYPE_FIXED_DICT();
 				Byte keysize = stream.readUint8();
@@ -801,24 +753,26 @@
 					datatype.dicttype[keyname] = keyutype;
 				};
 				
-				EntityDef.datatypes[name] = datatype;
+				EntityDef.datatypes[valname] = datatype;
 			}
-			else if(valname == "ARRAY")
+			else if(name == "ARRAY")
 			{
 				UInt16 uitemtype = stream.readUint16();
 				KBEDATATYPE_ARRAY datatype = new KBEDATATYPE_ARRAY();
 				datatype.vtype = uitemtype;
-				EntityDef.datatypes[name] = datatype;
+				EntityDef.datatypes[valname] = datatype;
 			}
 			else
 			{
 				KBEDATATYPE_BASE val = null;
-				EntityDef.datatypes.TryGetValue(valname, out val);
-				EntityDef.datatypes[name] = val;
+				EntityDef.datatypes.TryGetValue(name, out val);
+				EntityDef.datatypes[valname] = val;
 			}
 	
-			EntityDef.iddatatypes[utype] = EntityDef.datatypes[name];
-			EntityDef.datatype2id[name] = EntityDef.datatype2id[valname];
+			EntityDef.id2datatypes[utype] = EntityDef.datatypes[valname];
+			
+			// 将用户自定义的类型补充到映射表中
+			EntityDef.datatype2id[valname] = utype;
 		}
 
 		public void Client_onImportClientEntityDef(MemoryStream stream)
@@ -834,22 +788,8 @@
 
 		public void onImportClientEntityDef(MemoryStream stream)
 		{
-			UInt16 aliassize = stream.readUint16();
-			Dbg.DEBUG_MSG("KBEngine::Client_onImportClientEntityDef: importAlias(size=" + aliassize + ")!");
-			
-			while(aliassize > 0)
-			{
-				aliassize--;
-				createDataTypeFromStream(stream, true);
-			};
-		
-			foreach(string datatype in EntityDef.datatypes.Keys)
-			{
-				if(EntityDef.datatypes[datatype] != null)
-				{
-					EntityDef.datatypes[datatype].bind();
-				}
-			}
+			createDataTypeFromStreams(stream, true);
+
 			
 			while(stream.length() > 0)
 			{
@@ -879,7 +819,7 @@
 					Int16 ialiasID = stream.readInt16();
 					string name = stream.readString();
 					string defaultValStr = stream.readString();
-					KBEDATATYPE_BASE utype = EntityDef.iddatatypes[stream.readUint16()];
+					KBEDATATYPE_BASE utype = EntityDef.id2datatypes[stream.readUint16()];
 					
 					System.Reflection.MethodInfo setmethod = null;
 					
@@ -936,7 +876,7 @@
 					while(argssize > 0)
 					{
 						argssize--;
-						args.Add(EntityDef.iddatatypes[stream.readUint16()]);
+						args.Add(EntityDef.id2datatypes[stream.readUint16()]);
 					};
 					
 					Method savedata = new Method();
@@ -986,7 +926,7 @@
 					while(argssize > 0)
 					{
 						argssize--;
-						args.Add(EntityDef.iddatatypes[stream.readUint16()]);
+						args.Add(EntityDef.id2datatypes[stream.readUint16()]);
 					};
 					
 					Method savedata = new Method();
@@ -1014,7 +954,7 @@
 					while(argssize > 0)
 					{
 						argssize--;
-						args.Add(EntityDef.iddatatypes[stream.readUint16()]);
+						args.Add(EntityDef.id2datatypes[stream.readUint16()]);
 					};
 					
 					Method savedata = new Method();
@@ -1833,36 +1773,6 @@
 		}
 
 		/*
-			告诉客户端：你当前负责（或取消）控制谁的位移同步
-		*/
-		public void Client_onControlEntity(Int32 eid, sbyte isControlled)
-		{
-			Entity entity = null;
-
-			if (!entities.TryGetValue(eid, out entity))
-			{
-				Dbg.ERROR_MSG("KBEngine::Client_onControlEntity: entity(" + eid + ") not found!");
-				return;
-			}
-
-			var isCont = isControlled != 0;
-			if (isCont)
-				_controlledEntities.Add(entity);
-			else
-				_controlledEntities.Remove(entity);
-
-			try
-			{
-				entity.onControlled(isCont);
-			}
-			catch (Exception e)
-			{
-				Dbg.ERROR_MSG(string.Format("KBEngine::Client_onControlEntity: entity id = '{0}', is controlled = '{1}', error = '{1}'", eid, isCont, e));
-			}
-
-		}
-
-		/*
 			更新当前玩家的位置与朝向到服务端， 可以通过开关_syncPlayer关闭这个机制
 		*/
 		public void updatePlayerToServer()
@@ -1886,13 +1796,13 @@
 			Vector3 position = playerEntity.position;
 			Vector3 direction = playerEntity.direction;
 			
-			bool posHasChanged = Vector3.Distance(playerEntity._entityLastLocalPos, position) > 0.001f;
-			bool dirHasChanged = Vector3.Distance(playerEntity._entityLastLocalDir, direction) > 0.001f;
+			bool posHasChanged = Vector3.Distance(_entityLastLocalPos, position) > 0.001f;
+			bool dirHasChanged = Vector3.Distance(_entityLastLocalDir, direction) > 0.001f;
 			
 			if(posHasChanged || dirHasChanged)
 			{
-				playerEntity._entityLastLocalPos = position;
-				playerEntity._entityLastLocalDir = direction;
+				_entityLastLocalPos = position;
+				_entityLastLocalDir = direction;
 				
 				Bundle bundle = new Bundle();
 				bundle.newMessage(Message.messages["Baseapp_onUpdateDataFromClient"]);
@@ -1906,35 +1816,6 @@
 				bundle.writeUint8((Byte)(playerEntity.isOnGound == true ? 1 : 0));
 				bundle.writeUint32(spaceID);
 				bundle.send(_networkInterface);
-			}
-
-			foreach (var entity in _controlledEntities)
-			{
-				position = entity.position;
-				direction = entity.direction;
-
-				posHasChanged = Vector3.Distance(entity._entityLastLocalPos, position) > 0.001f;
-				dirHasChanged = Vector3.Distance(entity._entityLastLocalDir, direction) > 0.001f;
-
-				if (posHasChanged || dirHasChanged)
-				{
-					entity._entityLastLocalPos = position;
-					entity._entityLastLocalDir = direction;
-
-					Bundle bundle = new Bundle();
-					bundle.newMessage(Message.messages["Baseapp_onUpdateDataFromClientForControlledEntity"]);
-					bundle.writeInt32(entity.id);
-					bundle.writeFloat(position.x);
-					bundle.writeFloat(position.y);
-					bundle.writeFloat(position.z);
-
-					bundle.writeFloat((float)((double)direction.x / 360 * 6.283185307179586));
-					bundle.writeFloat((float)((double)direction.y / 360 * 6.283185307179586));
-					bundle.writeFloat((float)((double)direction.z / 360 * 6.283185307179586));
-					bundle.writeUint8((Byte)(entity.isOnGound == true ? 1 : 0));
-					bundle.writeUint32(spaceID);
-					bundle.send(_networkInterface);
-				}
 			}
 		}
 
@@ -1959,7 +1840,6 @@
 			clearEntities(isall);
 			isLoadedGeometry = false;
 			spaceID = 0;
-			_controlledEntities.Clear();
 		}
 		
 		public void clearEntities(bool isall)
@@ -2139,8 +2019,8 @@
 			entity.setDefinedPropterty("position", position);
 			entity.setDefinedPropterty("direction", direction);
 			
-			entity._entityLastLocalPos = entity.position;
-			entity._entityLastLocalDir = entity.direction;
+			_entityLastLocalPos = entity.position;
+			_entityLastLocalDir = entity.direction;
 			
 			entity.set_direction(old_direction);
 			entity.set_position(old_position);
