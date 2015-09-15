@@ -802,8 +802,6 @@
 			UInt16 utype = stream.readUint16();
 			string name = stream.readString();
 			string valname = stream.readString();
-			if (valname.Length == 0)
-				valname = "Null_" + utype;
 
 			/* 有一些匿名类型，我们需要提供一个唯一名称放到datatypes中
 				如：
