@@ -802,7 +802,9 @@
 			UInt16 utype = stream.readUint16();
 			string name = stream.readString();
 			string valname = stream.readString();
-			
+			if (valname.Length == 0)
+				valname = "Null_" + utype;
+
 			if(canprint)
 				Dbg.DEBUG_MSG("KBEngine::Client_onImportClientEntityDef: importAlias(" + name + ":" + valname + ":" + utype + ")!");
 			
