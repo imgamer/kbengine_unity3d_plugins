@@ -1502,6 +1502,9 @@
 		*/
 		public Int32 getAoiEntityIDFromStream(MemoryStream stream)
 		{
+			if (!_args.useAliasEntityID)
+				return stream.readInt32();
+
 			Int32 id = 0;
 			if(_entityIDAliasIDList.Count > 255)
 			{
