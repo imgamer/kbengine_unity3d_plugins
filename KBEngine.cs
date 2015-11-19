@@ -323,7 +323,7 @@
 			entity.direction.Set(direction.x, direction.y, direction.z);
 
 			entity.isClientOnly = true;
-			entity.isOnGound = true;
+			entity.isOnGround = true;
 			entity.__init__();
 			entity.enterWorld();
 
@@ -1959,7 +1959,7 @@
 					bundle.writeFloat((float)((double)direction.x / 360 * 6.283185307179586));
 					bundle.writeFloat((float)((double)direction.y / 360 * 6.283185307179586));
 					bundle.writeFloat((float)((double)direction.z / 360 * 6.283185307179586));
-					bundle.writeUint8((Byte)(entity.isOnGound == true ? 1 : 0));
+					bundle.writeUint8((Byte)(entity.isOnGround == true ? 1 : 0));
 					bundle.writeUint32(spaceID);
 					bundle.send(_networkInterface);
 				}
