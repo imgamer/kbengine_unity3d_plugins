@@ -325,7 +325,10 @@
 			entity.isClientOnly = true;
 			entity.isOnGround = true;
 			entity.__init__();
+			entity.inited = true;
+			entity.inWorld = true;
 			entity.enterWorld();
+			entity.notifyPropertysSetMethods();
 
 			return entity;
 		}
