@@ -29,12 +29,16 @@
 		public Mailbox baseMailbox = null;
 		public Mailbox cellMailbox = null;
 		
+		// enterworld之后设置为true
 		public bool inWorld = false;
 
 		/// <summary>
 		/// This property is True if it is a client-only entity.
 		/// </summary>
 		public bool isClientOnly = false;
+		
+		// __init__调用之后设置为true
+		public bool inited = false;
 		
 		// entityDef属性，服务端同步过来后存储在这里
 		private Dictionary<string, Property> defpropertys_ = 
@@ -115,10 +119,47 @@
 			iddefpropertys_[utype].val = val;
 		}
 		
+		/*
+			KBEngine的实体构造函数，与服务器脚本对应。
+			存在于这样的构造函数是因为KBE需要创建好实体并将属性等数据填充好才能告诉脚本层初始化
+		*/
 		public virtual void __init__()
 		{
 		}
-
+		
+		public void notifyPropertysSetMethods()
+		{
+			foreach(Property prop in iddefpropertys_.Values)
+			{
+				object oldval = getDefinedProptertyByUType(prop.properUtype);
+				System.Reflection.MethodInfo setmethod = prop.setmethod;
+				
+				if(setmethod != null)
+				{
+					if(prop.isBase())
+					{
+						if(inited)
+						{
+							//Dbg.DEBUG_MSG(className + "::notifyPropertysSetBasePropertyMethods(" + prop.name + ")"); 
+							setmethod.Invoke(this, new object[]{oldval});
+						}
+					}
+					else
+					{
+						if(inWorld)
+						{
+							//Dbg.DEBUG_MSG(className + "::notifyPropertysSetCellPropertyMethods(" + prop.name + ")"); 
+							setmethod.Invoke(this, new object[]{oldval});
+						}
+					}
+				}
+				else
+				{
+					//Dbg.DEBUG_MSG(className + "::notifyPropertysSetCellPropertyMethods(" + prop.name + ") not found set_*"); 
+				}
+			}
+		}
+		
 		public void baseCall(string methodname, params object[] arguments)
 		{			
 			if(KBEngineApp.app.currserver == "loginapp")
