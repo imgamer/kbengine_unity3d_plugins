@@ -329,7 +329,7 @@
 			entity.inWorld = true;
 			entity.enterWorld();
 			if(_args.isOnInitCallPropertysSetMethods)
-				entity.notifyPropertysSetMethods();
+				entity.callPropertysSetMethods();
 
 			return entity;
 		}
