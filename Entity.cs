@@ -36,6 +36,12 @@
 		/// This property is True if it is a client-only entity.
 		/// </summary>
 		public bool isClientOnly = false;
+
+		/// <summary>
+		/// 对于玩家自身来说，它表示是否自己被其它玩家控制了；
+		/// 对于其它entity来说，表示我本机是否控制了这个entity
+		/// </summary>
+		public bool isControlled = false;
 		
 		// __init__调用之后设置为true
 		public bool inited = false;
@@ -383,8 +389,11 @@
 		/// This callback method is called when the local entity control by the client has been enabled or disabled. 
 		/// See the Entity.controlledBy() method in the CellApp server code for more infomation.
 		/// </summary>
-		/// <param name="isControlled">Whether the entity is now controlled locally</param>
-		public virtual void onControlled(bool isControlled)
+		/// <param name="isControlled">
+		/// 对于玩家自身来说，它表示是否自己被其它玩家控制了；
+		/// 对于其它entity来说，表示我本机是否控制了这个entity
+		/// </param>
+		public virtual void onControlled(bool isControlled_)
 		{
 		
 		}

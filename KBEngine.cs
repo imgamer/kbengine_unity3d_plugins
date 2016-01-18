@@ -1903,7 +1903,9 @@
 				_controlledEntities.Add(entity);
 			else
 				_controlledEntities.Remove(entity);
-
+			
+			entity.isControlled = isCont;
+			
 			try
 			{
 				entity.onControlled(isCont);
@@ -1931,7 +1933,7 @@
 				return;
 			
 			Entity playerEntity = player();
-			if(playerEntity == null || playerEntity.inWorld == false)
+			if (playerEntity == null || playerEntity.inWorld == false || playerEntity.isControlled)
 				return;
 			
 			_lastUpdateToServerTime = System.DateTime.Now;
@@ -1961,6 +1963,7 @@
 				bundle.send(_networkInterface);
 			}
 
+			// 开始同步所有被控制了的entity的位置
 			foreach (var entity in _controlledEntities)
 			{
 				position = entity.position;
