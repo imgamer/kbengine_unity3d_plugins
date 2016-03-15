@@ -233,10 +233,8 @@
 				if (datas.Length <= 0)
 					return true;
 
-				bool startSend = false;
-				if (Interlocked.CompareExchange(ref _sending, 1, 0) == 0)
+				if (0 == Interlocked.Add(ref _sending, 0))
 				{
-					startSend = true;
 					if (_wpos == _spos)
 					{
 						_wpos = 0;
@@ -276,7 +274,7 @@
 
 				Interlocked.Add(ref _wpos, datas.Length);
 
-				if (startSend)
+				if (Interlocked.CompareExchange(ref _sending, 1, 0) == 0)
 				{
 					_startSend();
 				}
@@ -286,8 +284,36 @@
 
 			void _startSend()
 			{
-				var v = new AsyncSendMethod(this._asyncSend);
-				v.BeginInvoke(new AsyncCallback(_onSent), null);
+				// 能进来这个函数，意谓着当前没有处于发送状态，
+				// 因此，我们可以在主线程这里直接发送，
+				// 只有当发送的数据少于目标数据时，才考虑异步发送的问题，
+				// 所以，主线程发送的数据也就不需要考虑异步的问题了。
+				try
+				{
+					int sendSize = _wpos - _spos;
+					int bytesSent = _networkInterface.sock().Send(_buffer, _spos % _buffer.Length, sendSize, 0);
+					if (bytesSent == sendSize)
+					{
+						_sending = 0;
+						_wpos = 0;
+						_spos = 0;
+						return;
+					}
+					else
+					{
+						Dbg.WARNING_MSG("_startSend(), send not over, WILL ASYNC SEND!");
+						// 无法一次性全部发送完成，则转到异步中继续发送
+						_spos += bytesSent;
+						var v = new AsyncSendMethod(this._asyncSend);
+						v.BeginInvoke(new AsyncCallback(_onSent), null);
+					}
+				}
+				catch (SocketException se)
+				{
+					Dbg.ERROR_MSG(string.Format("PacketReceiver::_startSend(): send data error, disconnect from '{0}'! error = '{1}'", _networkInterface.sock().RemoteEndPoint, se));
+					Event.fireIn("_closeNetwork", new object[] { _networkInterface });
+					return;
+				}
 			}
 
 			void _asyncSend()
@@ -437,6 +463,7 @@
 			// Security.PrefetchSocketPolicy(ip, 843);
 			_socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
 			_socket.SetSocketOption(System.Net.Sockets.SocketOptionLevel.Socket, SocketOptionName.ReceiveBuffer, KBEngineApp.app.getInitArgs().getRecvBufferSize() * 2);
+			_socket.SetSocketOption(System.Net.Sockets.SocketOptionLevel.Socket, SocketOptionName.SendBuffer, KBEngineApp.app.getInitArgs().getSendBufferSize() * 2);
 
 			ConnectState state = new ConnectState();
 			state.connectIP = ip;
