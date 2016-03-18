@@ -2141,14 +2141,44 @@
 			_entityServerPos.x = stream.readFloat();
 			_entityServerPos.y = stream.readFloat();
 			_entityServerPos.z = stream.readFloat();
+
+			var entity = player();
+			if (entity != null && entity.isControlled)
+			{
+				entity.position.Set(_entityServerPos.x, _entityServerPos.y, _entityServerPos.z);
+				entity.onUpdateVolatileData();
+			}
 		}
 		
 		public void Client_onUpdateBasePosXZ(MemoryStream stream)
 		{
 			_entityServerPos.x = stream.readFloat();
 			_entityServerPos.z = stream.readFloat();
+
+			var entity = player();
+			if (entity != null && entity.isControlled)
+			{
+				entity.position.x = _entityServerPos.x;
+				entity.position.z = _entityServerPos.z;
+				entity.onUpdateVolatileData();
+			}
 		}
-		
+
+		public void Client_onUpdateBaseDir(MemoryStream stream)
+		{
+			float yaw, pitch, roll;
+			yaw = stream.readFloat() * 360 / ((float)System.Math.PI * 2);
+			pitch = stream.readFloat() * 360 / ((float)System.Math.PI * 2);
+			roll = stream.readFloat() * 360 / ((float)System.Math.PI * 2);
+
+			var entity = player();
+			if (entity != null && entity.isControlled)
+			{
+				entity.direction.Set(roll, pitch, yaw);
+				entity.onUpdateVolatileData();
+			}
+		}
+
 		public void Client_onUpdateData(MemoryStream stream)
 		{
 			Int32 eid = getAoiEntityIDFromStream(stream);
