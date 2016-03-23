@@ -1926,17 +1926,18 @@
 			{
 				return;
 			}
-			
-			TimeSpan span = DateTime.Now - _lastUpdateToServerTime; 
-			
-			if(span.Milliseconds < 50)
+
+			var now = DateTime.Now;
+			TimeSpan span = now - _lastUpdateToServerTime;
+
+			if (span.Ticks < 1000000)
 				return;
 			
 			Entity playerEntity = player();
 			if (playerEntity == null || playerEntity.inWorld == false || playerEntity.isControlled)
 				return;
-			
-			_lastUpdateToServerTime = System.DateTime.Now;
+
+			_lastUpdateToServerTime = now - (span - TimeSpan.FromTicks(1000000));
 			
 			Vector3 position = playerEntity.position;
 			Vector3 direction = playerEntity.direction;
