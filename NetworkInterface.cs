@@ -166,7 +166,7 @@
             _socket = null;
         }
 
-        public virtual bool send(byte[] datas)
+		public virtual bool send(MemoryStream stream)
         {
 			if(!valid()) 
 			{
@@ -178,7 +178,7 @@
 			
 			try
 			{
-				return _packetSender.send(datas);
+				return _packetSender.send(stream);
 			}
 			catch (SocketException err)
 			{

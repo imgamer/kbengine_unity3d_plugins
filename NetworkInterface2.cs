@@ -228,9 +228,10 @@
 				return _networkInterface;
 			}
 
-			public bool send(byte[] datas)
+			public bool send(MemoryStream stream)
 			{
-				if (datas.Length <= 0)
+				int dataLength = (int)stream.length();
+				if (dataLength <= 0)
 					return true;
 
 				if (0 == Interlocked.Add(ref _sending, 0))
@@ -252,27 +253,27 @@
 				else
 					space = tt_spos - tt_wpos - 1;
 
-				if (datas.Length > space)
+				if (dataLength > space)
 				{
-					Dbg.ERROR_MSG("PacketSender::send(): no space, Please adjust 'SEND_BUFFER_MAX'! data(" + datas.Length
+					Dbg.ERROR_MSG("PacketSender::send(): no space, Please adjust 'SEND_BUFFER_MAX'! data(" + dataLength
 						+ ") > space(" + space + "), wpos=" + _wpos + ", spos=" + t_spos);
 
 					return false;
 				}
 
-				int expect_total = tt_wpos + datas.Length;
+				int expect_total = tt_wpos + dataLength;
 				if (expect_total <= _buffer.Length)
 				{
-					Array.Copy(datas, 0, _buffer, tt_wpos, datas.Length);
+					Array.Copy(stream.data(), stream.rpos, _buffer, tt_wpos, dataLength);
 				}
 				else
 				{
 					int remain = _buffer.Length - tt_wpos;
-					Array.Copy(datas, 0, _buffer, tt_wpos, remain);
-					Array.Copy(datas, remain, _buffer, 0, expect_total - _buffer.Length);
+					Array.Copy(stream.data(), stream.rpos, _buffer, tt_wpos, remain);
+					Array.Copy(stream.data(), stream.rpos + remain, _buffer, 0, expect_total - _buffer.Length);
 				}
 
-				Interlocked.Add(ref _wpos, datas.Length);
+				Interlocked.Add(ref _wpos, dataLength);
 
 				if (Interlocked.CompareExchange(ref _sending, 1, 0) == 0)
 				{
@@ -483,7 +484,7 @@
 			v.BeginInvoke(state, new AsyncCallback(this._asyncConnectCB), state);
 		}
 
-		public override bool send(byte[] datas)
+		public override bool send(MemoryStream stream)
 		{
 			if (!valid())
 			{
@@ -493,7 +494,7 @@
 			if (_packetSender == null)
 				_packetSender = new PacketSender(this);
 
-			return _packetSender.send(datas);
+			return _packetSender.send(stream);
 		}
 
 		public override void process()
