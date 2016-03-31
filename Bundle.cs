@@ -83,9 +83,7 @@
 				for(int i=0; i<streamList.Count; i++)
 				{
 					stream = streamList[i];
-					Profiler.BeginSample("KBE::Bundle::send_fini");
 					networkInterface.send(stream);
-					Profiler.EndSample();
 				}
 			}
 			else
