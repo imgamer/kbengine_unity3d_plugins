@@ -36,6 +36,8 @@
 		static LinkedList<EventObj> doingEvents_in = new LinkedList<EventObj>();
 
 		static bool _isPauseOut = false;
+
+		static bool _useSync = false;  // 是否使用同步事件模式
 	
 		public Event()
 		{
@@ -95,7 +97,12 @@
 			
 			Monitor.Exit(obj);
 		}
-		
+
+		public static void useSyncMode( bool yes )
+		{
+			_useSync = yes;
+		}
+
 		public static bool hasRegisterOut(string eventname)
 		{
 			return _hasRegister(events_out, eventname);
@@ -244,7 +251,10 @@ __RESTART_REMOVE:
 		*/
 		public static void fireOut(string eventname, params object[] args)
 		{
-			fire_(events_out, firedEvents_out, eventname, args);
+			if (_useSync)
+				fireSync_(events_out, eventname, args);
+			else
+				fire_(events_out, firedEvents_out, eventname, args);
 		}
 
 		/*
@@ -253,7 +263,10 @@ __RESTART_REMOVE:
 		*/
 		public static void fireIn(string eventname, params object[] args)
 		{
-			fire_(events_in, firedEvents_in, eventname, args);
+			if (_useSync)
+				fireSync_(events_in, eventname, args);
+			else
+				fire_(events_in, firedEvents_in, eventname, args);
 		}
 
 		/*
@@ -261,10 +274,46 @@ __RESTART_REMOVE:
 		*/
 		public static void fireAll(string eventname, params object[] args)
 		{
-			fire_(events_in, firedEvents_in, eventname, args);
-			fire_(events_out, firedEvents_out, eventname, args);
+			if (_useSync)
+			{
+				fireSync_(events_in, eventname, args);
+				fireSync_(events_out, eventname, args);
+			}
+			else
+			{
+				fire_(events_in, firedEvents_in, eventname, args);
+				fire_(events_out, firedEvents_out, eventname, args);
+			}
 		}
-		
+
+		private static void fireSync_(Dictionary<string, List<Pair>> events, string eventname, object[] args)
+		{
+			List<Pair> lst = null;
+
+			if (!events.TryGetValue(eventname, out lst))
+			{
+				if (events == events_in)
+					Dbg.WARNING_MSG("Event::fireIn: event(" + eventname + ") not found!");
+				else
+					Dbg.WARNING_MSG("Event::fireOut: event(" + eventname + ") not found!");
+
+				return;
+			}
+
+			for (int i = 0; i < lst.Count; ++i)
+			{
+				var eobj = lst[i];
+				try
+				{
+					eobj.method.Invoke(eobj.obj, args);
+				}
+				catch (Exception e)
+				{
+					Dbg.ERROR_MSG("Event::processOutEvents: event=" + eobj.funcname + "\n" + e.ToString());
+				}
+			}
+		}
+
 		private static void fire_(Dictionary<string, List<Pair>> events, LinkedList<EventObj> firedEvents, string eventname, object[] args)
 		{
 			monitor_Enter(events);

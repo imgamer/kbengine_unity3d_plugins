@@ -74,6 +74,8 @@ public class KBEMain : MonoBehaviour
 			gameapp = new KBEngineAppThread(args);
 		else
 			gameapp = new KBEngineApp(args);
+
+		KBEngine.Event.useSyncMode(!isMultiThreads);
 	}
 	
 	void OnDestroy()
