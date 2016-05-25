@@ -137,7 +137,7 @@
 							if (first > 1000)
 							{
 								Dbg.ERROR_MSG("PacketReceiver::_asyncReceive(): no space!");
-								Event.fireIn("_closeNetwork", new object[] { _networkInterface });
+								Event.asyncFireIn("_closeNetwork", new object[] { _networkInterface });
 								return;
 							}
 
@@ -157,7 +157,7 @@
 					catch (SocketException se)
 					{
 						Dbg.ERROR_MSG(string.Format("PacketReceiver::_asyncReceive(): receive error, disconnect from '{0}'! error = '{1}'", socket.RemoteEndPoint, se));
-						Event.fireIn("_closeNetwork", new object[] { _networkInterface });
+						Event.asyncFireIn("_closeNetwork", new object[] { _networkInterface });
 						return;
 					}
 
@@ -169,7 +169,7 @@
 					else
 					{
 						Dbg.WARNING_MSG(string.Format("PacketReceiver::_asyncReceive(): receive 0 bytes, disconnect from '{0}'!", socket.RemoteEndPoint));
-						Event.fireIn("_closeNetwork", new object[] { _networkInterface });
+						Event.asyncFireIn("_closeNetwork", new object[] { _networkInterface });
 						return;
 					}
 				}
@@ -199,6 +199,8 @@
 			int _wpos = 0;				// 写入的数据位置
 			int _spos = 0;				// 发送完毕的数据位置
 			int _sending = 0;
+			AsyncSendMethod _asyncSendMethod;
+			AsyncCallback _asyncCallback;
 
 			private NetworkInterface _networkInterface = null;
 
@@ -217,6 +219,8 @@
 				_networkInterface = networkInterface;
 
 				_buffer = new byte[KBEngineApp.app.getInitArgs().SEND_BUFFER_MAX];
+				_asyncSendMethod = new AsyncSendMethod(this._asyncSend);
+				_asyncCallback = new AsyncCallback(_onSent);
 
 				_wpos = 0;
 				_spos = 0;
@@ -279,42 +283,14 @@
 				{
 					_startSend();
 				}
-
 				return true;
 			}
 
 			void _startSend()
 			{
-				// 能进来这个函数，意谓着当前没有处于发送状态，
-				// 因此，我们可以在主线程这里直接发送，
-				// 只有当发送的数据少于目标数据时，才考虑异步发送的问题，
-				// 所以，主线程发送的数据也就不需要考虑异步的问题了。
-				try
-				{
-					int sendSize = _wpos - _spos;
-					int bytesSent = _networkInterface.sock().Send(_buffer, _spos % _buffer.Length, sendSize, 0);
-					if (bytesSent == sendSize)
-					{
-						_sending = 0;
-						_wpos = 0;
-						_spos = 0;
-						return;
-					}
-					else
-					{
-						Dbg.WARNING_MSG("_startSend(), send not over, WILL ASYNC SEND!");
-						// 无法一次性全部发送完成，则转到异步中继续发送
-						_spos += bytesSent;
-						var v = new AsyncSendMethod(this._asyncSend);
-						v.BeginInvoke(new AsyncCallback(_onSent), null);
-					}
-				}
-				catch (SocketException se)
-				{
-					Dbg.ERROR_MSG(string.Format("PacketReceiver::_startSend(): send data error, disconnect from '{0}'! error = '{1}'", _networkInterface.sock().RemoteEndPoint, se));
-					Event.fireIn("_closeNetwork", new object[] { _networkInterface });
-					return;
-				}
+				// 由于socket用的是非阻塞式，因此在这里不能直接使用socket.send()方法
+				// 必须放到另一个线程中去做
+				_asyncSendMethod.BeginInvoke(_asyncCallback, null);
 			}
 
 			void _asyncSend()
@@ -345,7 +321,7 @@
 					catch (SocketException se)
 					{
 						Dbg.ERROR_MSG(string.Format("PacketReceiver::_asyncSend(): send data error, disconnect from '{0}'! error = '{1}'", socket.RemoteEndPoint, se));
-						Event.fireIn("_closeNetwork", new object[] { _networkInterface });
+						Event.asyncFireIn("_closeNetwork", new object[] { _networkInterface });
 						return;
 					}
 
@@ -417,12 +393,15 @@
 				Dbg.ERROR_MSG(string.Format("NetworkInterface::_onConnectStatus(), connect is error! ip: {0}:{1}, err: {2}", state.connectIP, state.connectPort, state.error));
 			}
 
-			Event.fireAll("onConnectStatus", new object[] { success });
+			Event.asyncFireAll("onConnectStatus", new object[] { success });
 
 			if (state.connectCB != null)
 				state.connectCB(state.connectIP, state.connectPort, success, state.userData);
 		}
 
+		/// <summary>
+		/// 在非主线程执行：连接服务器
+		/// </summary>
 		private void _asyncConnect(ConnectState state)
 		{
 			Dbg.DEBUG_MSG(string.Format("NetWorkInterface::_asyncConnect(), will connect to '{0}:{1}' ...", state.connectIP, state.connectPort));
@@ -437,6 +416,9 @@
 			}
 		}
 
+		/// <summary>
+		/// 在非主线程执行：连接服务器结果回调
+		/// </summary>
 		private void _asyncConnectCB(IAsyncResult ar)
 		{
 			ConnectState state = (ConnectState)ar.AsyncState;
@@ -447,7 +429,7 @@
 
 			// Call EndInvoke to retrieve the results.
 			caller.EndInvoke(ar);
-			Event.fireIn("_onConnectStatus", new object[] { state });
+			Event.asyncFireIn("_onConnectStatus", new object[] { state });
 		}
 
 		public override void connectTo(string ip, int port, ConnectCallback callback, object userData)
@@ -466,6 +448,7 @@
 			_socket.SetSocketOption(System.Net.Sockets.SocketOptionLevel.Socket, SocketOptionName.ReceiveBuffer, KBEngineApp.app.getInitArgs().getRecvBufferSize() * 2);
 			_socket.SetSocketOption(System.Net.Sockets.SocketOptionLevel.Socket, SocketOptionName.SendBuffer, KBEngineApp.app.getInitArgs().getSendBufferSize() * 2);
 			_socket.NoDelay = true;
+			//_socket.Blocking = false;
 
 			ConnectState state = new ConnectState();
 			state.connectIP = ip;

@@ -225,17 +225,17 @@
 		{
 			monitor_Enter(events);
 			
-			foreach(KeyValuePair<string, List<Pair>> e in events)
+			var iter = events.GetEnumerator();
+			while (iter.MoveNext())
 			{
-				List<Pair> lst = e.Value;
-__RESTART_REMOVE:
-				for(int i=0; i<lst.Count; i++)
+				List<Pair> lst = iter.Current.Value;
+				// 从后往前遍历，以避免中途删除的问题
+				for (int i = lst.Count - 1; i >= 0; i--)
 				{
-					if(obj == lst[i].obj)
+					if (obj == lst[i].obj)
 					{
 						//Dbg.DEBUG_MSG("Event::deregister: event(" + e.Key + ":" + lst[i].funcname + ")!");
 						lst.RemoveAt(i);
-						goto __RESTART_REMOVE;
 					}
 				}
 			}
@@ -252,9 +252,17 @@ __RESTART_REMOVE:
 		public static void fireOut(string eventname, params object[] args)
 		{
 			if (_useSync)
-				fireSync_(events_out, eventname, args);
+				fire_(events_out, eventname, args);
 			else
-				fire_(events_out, firedEvents_out, eventname, args);
+				asyncFire_(events_out, firedEvents_out, eventname, args);
+		}
+
+		/// <summary>
+		/// 忽略_useSync参数，强制使用异步事件
+		/// </summary>
+		public static void asyncFireOut(string eventname, params object[] args)
+		{
+			asyncFire_(events_out, firedEvents_out, eventname, args);
 		}
 
 		/*
@@ -264,9 +272,17 @@ __RESTART_REMOVE:
 		public static void fireIn(string eventname, params object[] args)
 		{
 			if (_useSync)
-				fireSync_(events_in, eventname, args);
+				fire_(events_in, eventname, args);
 			else
-				fire_(events_in, firedEvents_in, eventname, args);
+				asyncFire_(events_in, firedEvents_in, eventname, args);
+		}
+
+		/// <summary>
+		/// 忽略_useSync参数，强制使用异步事件
+		/// </summary>
+		public static void asyncFireIn(string eventname, params object[] args)
+		{
+			asyncFire_(events_in, firedEvents_in, eventname, args);
 		}
 
 		/*
@@ -276,17 +292,26 @@ __RESTART_REMOVE:
 		{
 			if (_useSync)
 			{
-				fireSync_(events_in, eventname, args);
-				fireSync_(events_out, eventname, args);
+				fire_(events_in, eventname, args);
+				fire_(events_out, eventname, args);
 			}
 			else
 			{
-				fire_(events_in, firedEvents_in, eventname, args);
-				fire_(events_out, firedEvents_out, eventname, args);
+				asyncFire_(events_in, firedEvents_in, eventname, args);
+				asyncFire_(events_out, firedEvents_out, eventname, args);
 			}
 		}
 
-		private static void fireSync_(Dictionary<string, List<Pair>> events, string eventname, object[] args)
+		/// <summary>
+		/// 忽略_useSync参数，强制使用异步事件
+		/// </summary>
+		public static void asyncFireAll(string eventname, params object[] args)
+		{
+			asyncFire_(events_in, firedEvents_in, eventname, args);
+			asyncFire_(events_out, firedEvents_out, eventname, args);
+		}
+
+		private static void fire_(Dictionary<string, List<Pair>> events, string eventname, object[] args)
 		{
 			List<Pair> lst = null;
 
@@ -314,7 +339,7 @@ __RESTART_REMOVE:
 			}
 		}
 
-		private static void fire_(Dictionary<string, List<Pair>> events, LinkedList<EventObj> firedEvents, string eventname, object[] args)
+		private static void asyncFire_(Dictionary<string, List<Pair>> events, LinkedList<EventObj> firedEvents, string eventname, object[] args)
 		{
 			monitor_Enter(events);
 			List<Pair> lst = null;
@@ -347,9 +372,10 @@ __RESTART_REMOVE:
 
 			if(firedEvents_out.Count > 0)
 			{
-				foreach(EventObj evt in firedEvents_out)
+				var iter = firedEvents_out.GetEnumerator();
+				while (iter.MoveNext())
 				{
-					doingEvents_out.AddLast(evt);
+					doingEvents_out.AddLast(iter.Current);
 				}
 
 				firedEvents_out.Clear();
@@ -387,9 +413,10 @@ __RESTART_REMOVE:
 
 			if(firedEvents_in.Count > 0)
 			{
-				foreach(EventObj evt in firedEvents_in)
+				var iter = firedEvents_in.GetEnumerator();
+				while (iter.MoveNext())
 				{
-					doingEvents_in.AddLast(evt);
+					doingEvents_in.AddLast(iter.Current);
 				}
 
 				firedEvents_in.Clear();

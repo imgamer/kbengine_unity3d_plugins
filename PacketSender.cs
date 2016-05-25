@@ -25,17 +25,24 @@
 		int _sending = 0;
 		
 		private NetworkInterface _networkInterface = null;
+		AsyncCallback _asyncCallback = null;
 		
         public PacketSender(NetworkInterface networkInterface)
         {
         	_init(networkInterface);
         }
 
+		~PacketSender()
+		{
+			Dbg.DEBUG_MSG("PacketSender::~PacketSender(), destroyed!");
+		}
+
 		void _init(NetworkInterface networkInterface)
 		{
 			_networkInterface = networkInterface;
 			
 			_buffer = new byte[KBEngineApp.app.getInitArgs().SEND_BUFFER_MAX];
+			_asyncCallback = new AsyncCallback(_onSent);
 			
 			_wpos = 0; 
 			_spos = 0;
@@ -117,12 +124,12 @@
 			try
 			{
 				_networkInterface.sock().BeginSend(_buffer, _spos % _buffer.Length, sendSize, 0,
-         		   new AsyncCallback(_onSent), this);
+         		   _asyncCallback, this);
 			}
 			catch (Exception e) 
 			{
 				Dbg.ERROR_MSG("PacketSender::startSend(): is err: " + e.ToString());
-				Event.fireIn("_closeNetwork", new object[]{_networkInterface});
+				Event.asyncFireIn("_closeNetwork", new object[] { _networkInterface });
 			}
 		}
 		
@@ -159,7 +166,7 @@
 			catch (Exception e) 
 			{
 				Dbg.ERROR_MSG(string.Format("PacketSender::_processSent(): is error({0})!", e.ToString()));
-				Event.fireIn("_closeNetwork", new object[]{state.networkInterface()});
+				Event.asyncFireIn("_closeNetwork", new object[] { state.networkInterface() });
 				Interlocked.Exchange(ref state._sending, 0);
 			}
 		}

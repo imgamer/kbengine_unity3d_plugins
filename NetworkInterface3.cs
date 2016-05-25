@@ -40,6 +40,11 @@
 				messageReader = new MessageReader();
 			}
 
+			~PacketReceiver()
+			{
+				Dbg.DEBUG_MSG("PacketReceiver::~PacketReceiver(), destroyed!");
+			}
+
 			public void processMessage()
 			{
 				int t_wpos = Interlocked.Add(ref _wpos, 0);
@@ -128,7 +133,7 @@
 				catch (Exception e)
 				{
 					Dbg.ERROR_MSG("PacketReceiver::process(): call Receive() is err: " + e.ToString());
-					Event.fireIn("_closeNetwork", new object[] { networkInterface });
+					Event.asyncFireIn("_closeNetwork", new object[] { networkInterface });
 					return;
 				}
 
@@ -140,7 +145,7 @@
 				else
 				{
 					Dbg.WARNING_MSG(string.Format("PacketReceiver::process(): disconnect! bytesRead = '{0}'", bytesRead));
-					Event.fireIn("_closeNetwork", new object[] { networkInterface });
+					Event.asyncFireIn("_closeNetwork", new object[] { networkInterface });
 					return;
 				}
 			}
@@ -167,6 +172,11 @@
 				_wpos = 0;
 				_spos = 0;
 				_sending = 0;
+			}
+
+			~PacketSender()
+			{
+				Dbg.DEBUG_MSG("PacketSender::~PacketSender(), destroyed!");
 			}
 
 			public bool send(MemoryStream stream)
@@ -221,6 +231,10 @@
 
 			public void process(NetworkInterface3 networkInterface)
 			{
+				int sendSize = Interlocked.Add(ref _wpos, 0) - _spos;
+				if (sendSize <= 0)
+					return;
+
 				var socket = networkInterface.sock();
 
 				try
@@ -234,9 +248,6 @@
 					return;
 				}
 
-				int sendSize = Interlocked.Add(ref _wpos, 0) - _spos;
-				if (sendSize <= 0)
-					return;
 				int t_spos = _spos % _buffer.Length;
 				if (t_spos == 0)
 					t_spos = sendSize;
@@ -252,7 +263,7 @@
 				catch (Exception e)
 				{
 					Dbg.ERROR_MSG("PacketSender::process(): is err: " + e.ToString());
-					Event.fireIn("_closeNetwork", new object[] { networkInterface });
+					Event.asyncFireIn("_closeNetwork", new object[] { networkInterface });
 				}
 
 				int spos = Interlocked.Add(ref _spos, bytesSent);
@@ -312,14 +323,14 @@
 					{
 						Dbg.ERROR_MSG(string.Format("connect to '{0}:{1}' fault!!! error = '{2}'", ip, port, se));
 						_state.error = se.ToString();
-						Event.fireIn("_onConnectStatus", new object[] { _state });
+						Event.asyncFireIn("_onConnectStatus", new object[] { _state });
 					}
 				}
 				catch (Exception e)
 				{
 					Dbg.ERROR_MSG(string.Format("connect to '{0}:{1}' fault!!! error = '{2}'", ip, port, e));
 					_state.error = e.ToString();
-					Event.fireIn("_onConnectStatus", new object[] { _state });
+					Event.asyncFireIn("_onConnectStatus", new object[] { _state });
 				}
 				step = 1;
 			}
@@ -340,7 +351,7 @@
 					{
 						networkInterface._network_status = null;
 						_state.error = e.ToString();
-						Event.fireIn("_onConnectStatus", new object[] { _state });
+						Event.asyncFireIn("_onConnectStatus", new object[] { _state });
 						return;
 					}
 
@@ -351,7 +362,7 @@
 						networkInterface._network_status = networkInterface._status_connected;
 
 						// 回调通知
-						Event.fireIn("_onConnectStatus", new object[] { _state });
+						Event.asyncFireIn("_onConnectStatus", new object[] { _state });
 					}
 				}
 			}
@@ -375,7 +386,7 @@
 				if (networkInterface._packetSender != null)
 					networkInterface._packetSender.process(networkInterface);
 
-				Thread.Sleep((int)(1000 * 0.1));
+				Thread.Sleep(100);  // 睡眠0.1秒
 			}
 
 		}
@@ -420,7 +431,7 @@
 		{
 			if (_worker != null)
 			{
-				_worker.Interrupt();
+				_worker.Abort();
 				_worker = null;
 			}
 			_packetReceiver = null;
@@ -435,7 +446,7 @@
 		{
 			if (_worker != null)
 			{
-				_worker.Interrupt();
+				_worker.Abort();
 				_worker = null;
 			}
 			_packetReceiver = null;
@@ -459,8 +470,8 @@
 			{
 				Dbg.ERROR_MSG(string.Format("NetworkInterface::_onConnectStatus(), connect is error! ip: {0}:{1}, err: {2}", state.connectIP, state.connectPort, state.error));
 			}
-			
-			Event.fireAll("onConnectStatus", new object[]{success});
+
+			Event.asyncFireAll("onConnectStatus", new object[] { success });
 			
 			if (state.connectCB != null)
 				state.connectCB(state.connectIP, state.connectPort, success, state.userData);
@@ -478,6 +489,10 @@
 			catch (ThreadInterruptedException)
 			{
 				Dbg.DEBUG_MSG("NetworkInterface::loop(), receive interrupted signal, stop thread now!");
+			}
+			catch (ThreadAbortException)
+			{
+				Dbg.DEBUG_MSG("NetworkInterface::loop(), receive abort signal, stop thread now!");
 			}
 		}
 

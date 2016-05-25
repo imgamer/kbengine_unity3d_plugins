@@ -20,6 +20,7 @@
     {
 		private MessageReader messageReader = null;
 		private NetworkInterface _networkInterface = null;
+		AsyncCallback _asyncCallback = null;
 
 		private byte[] _buffer;
 		
@@ -34,10 +35,16 @@
         	_init(networkInterface);
         }
 
+		~PacketReceiver()
+		{
+			Dbg.DEBUG_MSG("PacketReceiver::~PacketReceiver(), destroyed!");
+		}
+
 		void _init(NetworkInterface networkInterface)
 		{
 			_networkInterface = networkInterface;
 			_buffer = new byte[KBEngineApp.app.getInitArgs().RECV_BUFFER_MAX];
+			_asyncCallback = new AsyncCallback(_onRecv);
 			
 			messageReader = new MessageReader();
 		}
@@ -114,12 +121,12 @@
 			try
 			{
 				_networkInterface.sock().BeginReceive(_buffer, _wpos, space, 0,
-			            new AsyncCallback(_onRecv), this);
+						_asyncCallback, this);
 			}
 			catch (Exception e) 
 			{
 				Dbg.ERROR_MSG("PacketReceiver::startRecv(): call ReceiveAsync() is err: " + e.ToString());
-				Event.fireIn("_closeNetwork", new object[]{_networkInterface});
+				Event.asyncFireIn("_closeNetwork", new object[]{_networkInterface});
 			}
 		}
 		
@@ -151,7 +158,7 @@
 		        	if (bytesRead == 0) 
 		        	{
 		        		Dbg.WARNING_MSG(string.Format("PacketReceiver::_processRecved(): disconnect!"));
-		        		Event.fireIn("_closeNetwork", new object[]{state.networkInterface()});
+						Event.asyncFireIn("_closeNetwork", new object[] { state.networkInterface() });
 		        		return;
 		        	}
 		        	else
@@ -163,7 +170,7 @@
 			catch (Exception e) 
 			{
 				Dbg.ERROR_MSG(string.Format("PacketReceiver::_processRecved(): is error({0})!", e.ToString()));
-				Event.fireIn("_closeNetwork", new object[]{state.networkInterface()});
+				Event.asyncFireIn("_closeNetwork", new object[] { state.networkInterface() });
 			}
 		}
 	}

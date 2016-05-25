@@ -85,8 +85,8 @@
 			{
 				Dbg.ERROR_MSG(string.Format("NetworkInterface::_onConnectStatus(), connect is error! ip: {0}:{1}, err: {2}", state.connectIP, state.connectPort, state.error));
 			}
-			
-			Event.fireOut("onConnectStatus", new object[]{success});
+
+			Event.asyncFireOut("onConnectStatus", new object[] { success });
 			
 			if (state.connectCB != null)
 				state.connectCB(state.connectIP, state.connectPort, success, state.userData);
@@ -104,12 +104,12 @@
 				// Complete the connection.
 				state.socket.EndConnect(ar);
 
-				Event.fireIn("_onConnectStatus", new object[]{state});
+				Event.asyncFireIn("_onConnectStatus", new object[] { state });
 			} 
 			catch (Exception e) 
 			{
 				state.error = e.ToString();
-				Event.fireIn("_onConnectStatus", new object[]{state});
+				Event.asyncFireIn("_onConnectStatus", new object[] { state });
 			}
 		}
 	    
@@ -127,9 +127,9 @@
 			// Security.PrefetchSocketPolicy(ip, 843);
 			_socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp); 
 			_socket.SetSocketOption(System.Net.Sockets.SocketOptionLevel.Socket, SocketOptionName.ReceiveBuffer, KBEngineApp.app.getInitArgs().getRecvBufferSize() * 2);
-			_socket.SetSocketOption(System.Net.Sockets.SocketOptionLevel.Socket, SocketOptionName.SendBuffer, KBEngineApp.app.getInitArgs().getSendBufferSize() * 2);  
- 			_socket.NoDelay = true;  
-
+			_socket.SetSocketOption(System.Net.Sockets.SocketOptionLevel.Socket, SocketOptionName.SendBuffer, KBEngineApp.app.getInitArgs().getSendBufferSize() * 2);
+			_socket.NoDelay = true;
+			
 			ConnectState state = new ConnectState();
 			state.connectIP = ip;
 			state.connectPort = port;
@@ -150,7 +150,7 @@
             catch (Exception e) 
             {
             	state.error = e.ToString();
-				Event.fireIn("_onConnectStatus", new object[]{state});
+				Event.asyncFireIn("_onConnectStatus", new object[] { state });
             }
 		}
         
@@ -160,7 +160,7 @@
 			{
 				_socket.Close(0);
 				_socket = null;
-				Event.fireAll("onDisableConnect", new object[]{});
+				Event.asyncFireAll("onDisableConnect", new object[] { });
             }
 
             _socket = null;
