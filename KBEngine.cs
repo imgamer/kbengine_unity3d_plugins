@@ -1817,6 +1817,7 @@
 			}
 			else
 			{
+				_controlledEntities.Remove(entity);
 				entities.Remove(eid);
 				entity.onDestroy();
 				_entityIDAliasIDList.Remove(eid);
@@ -1900,9 +1901,16 @@
 
 			var isCont = isControlled != 0;
 			if (isCont)
-				_controlledEntities.Add(entity);
+			{
+				// 如果被控制者是玩家自己，那表示玩家自己被其它人控制了
+				// 所以玩家自己不应该进入这个被控制列表
+				if (player().id != entity.id)
+					_controlledEntities.Add(entity);
+			}
 			else
+			{
 				_controlledEntities.Remove(entity);
+			}
 			
 			entity.isControlled = isCont;
 			
@@ -2017,12 +2025,12 @@
 			clearEntities(isall);
 			isLoadedGeometry = false;
 			spaceID = 0;
-			_controlledEntities.Clear();
 		}
 		
 		public void clearEntities(bool isall)
 		{
-			if(!isall)
+			_controlledEntities.Clear();
+			if (!isall)
 			{
 				Entity entity = player();
 				
@@ -2130,7 +2138,8 @@
 				
 				entity.leaveWorld();
 			}
-			
+
+			_controlledEntities.Remove(entity);
 			entities.Remove(eid);
 			entity.onDestroy();
 		}
