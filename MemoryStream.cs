@@ -39,10 +39,10 @@
 		/// <summary>
 		/// 把自己放回缓冲池
 		/// </summary>
-		public void putToPool()
+		public void reclaimObject()
 		{
 			clear();
-			putObject(this);
+			reclaimObject(this);
 		}
 		
 		public byte[] data()

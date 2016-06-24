@@ -52,7 +52,7 @@
 		public Bundle newMail()
 		{  
 			if(bundle == null)
-				bundle = Bundle.getObject();
+				bundle = Bundle.createObject();
 			
 			if(type == Mailbox.MAILBOX_TYPE.MAILBOX_TYPE_CELL)
 				bundle.newMessage(Message.messages["Baseapp_onRemoteCallCellMethodFromClient"]);

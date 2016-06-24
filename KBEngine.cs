@@ -403,7 +403,7 @@
 				{
 					if(Loginapp_onClientActiveTickMsg != null)
 					{
-						Bundle bundle = Bundle.getObject();
+						Bundle bundle = Bundle.createObject();
 						bundle.newMessage(Message.messages["Loginapp_onClientActiveTick"]);
 						bundle.send(_networkInterface);
 					}
@@ -412,7 +412,7 @@
 				{
 					if(Baseapp_onClientActiveTickMsg != null)
 					{
-						Bundle bundle = Bundle.getObject();
+						Bundle bundle = Bundle.createObject();
 						bundle.newMessage(Message.messages["Baseapp_onClientActiveTick"]);
 						bundle.send(_networkInterface);
 					}
@@ -427,7 +427,7 @@
 		*/
 		public void hello()
 		{
-			Bundle bundle = Bundle.getObject();
+			Bundle bundle = Bundle.createObject();
 			if(currserver == "loginapp")
 				bundle.newMessage(Message.messages["Loginapp_hello"]);
 			else
@@ -563,7 +563,7 @@
 			else
 			{
 				Dbg.DEBUG_MSG("KBEngine::login_loginapp(): send login! username=" + username);
-				Bundle bundle = Bundle.getObject();
+				Bundle bundle = Bundle.createObject();
 				bundle.newMessage(Message.messages["Loginapp_login"]);
 				bundle.writeInt8((sbyte)_args.clientType);
 				bundle.writeBlob(KBEngineApp.app._clientdatas);
@@ -593,7 +593,7 @@
 		{
 			if(!loginappMessageImported_)
 			{
-				var bundle = Bundle.getObject();
+				var bundle = Bundle.createObject();
 				bundle.newMessage(Message.messages["Loginapp_importClientMessages"]);
 				bundle.send(_networkInterface);
 				Dbg.DEBUG_MSG("KBEngine::onLogin_loginapp: send importClientMessages ...");
@@ -620,7 +620,7 @@
 			}
 			else
 			{
-				Bundle bundle = Bundle.getObject();
+				Bundle bundle = Bundle.createObject();
 				bundle.newMessage(Message.messages["Baseapp_loginBaseapp"]);
 				bundle.writeString(username);
 				bundle.writeString(password);
@@ -648,7 +648,7 @@
 		{
 			if(!baseappMessageImported_)
 			{
-				var bundle = Bundle.getObject();
+				var bundle = Bundle.createObject();
 				bundle.newMessage(Message.messages["Baseapp_importClientMessages"]);
 				bundle.send(_networkInterface);
 				Dbg.DEBUG_MSG("KBEngine::onLogin_baseapp: send importClientMessages ...");
@@ -681,7 +681,7 @@
 			
 			Dbg.DEBUG_MSG(string.Format("KBEngine::relogin_baseapp(): connect {0}:{1} is successfully!", ip, port));
 
-			Bundle bundle = Bundle.getObject();
+			Bundle bundle = Bundle.createObject();
 			bundle.newMessage(Message.messages["Baseapp_reLoginBaseapp"]);
 			bundle.writeString(username);
 			bundle.writeString(password);
@@ -698,28 +698,28 @@
 			resetMessages();
 			
 			loadingLocalMessages_ = true;
-			MemoryStream stream = MemoryStream.getObject();
+			MemoryStream stream = MemoryStream.createObject();
 			stream.append(loginapp_clientMessages, (UInt32)0, (UInt32)loginapp_clientMessages.Length);
 			currserver = "loginapp";
 			onImportClientMessages(stream);
-			stream.putToPool();
+			stream.reclaimObject();
 
-			stream = MemoryStream.getObject();
+			stream = MemoryStream.createObject();
 			stream.append(baseapp_clientMessages, (UInt32)0, (UInt32)baseapp_clientMessages.Length);
 			currserver = "baseapp";
 			onImportClientMessages(stream);
 			currserver = "loginapp";
-			stream.putToPool();
+			stream.reclaimObject();
 
-			stream = MemoryStream.getObject();
+			stream = MemoryStream.createObject();
 			stream.append(serverErrorsDescr, (UInt32)0, (UInt32)serverErrorsDescr.Length);
 			onImportServerErrorsDescr(stream);
-			stream.putToPool();
+			stream.reclaimObject();
 
-			stream = MemoryStream.getObject();
+			stream = MemoryStream.createObject();
 			stream.append(entitydefMessages, (UInt32)0, (UInt32)entitydefMessages.Length);
 			onImportClientEntityDef(stream);
-			stream.putToPool();
+			stream.reclaimObject();
 
 			loadingLocalMessages_ = false;
 			loginappMessageImported_ = true;
@@ -746,7 +746,7 @@
 				{
 					Dbg.DEBUG_MSG("KBEngine::onImportClientMessagesCompleted(): send importServerErrorsDescr!");
 					isImportServerErrorsDescr_ = true;
-					Bundle bundle = Bundle.getObject();
+					Bundle bundle = Bundle.createObject();
 					bundle.newMessage(Message.messages["Loginapp_importServerErrorsDescr"]);
 					bundle.send(_networkInterface);
 				}
@@ -778,7 +778,7 @@
 				if(!entitydefImported_ && !loadingLocalMessages_)
 				{
 					Dbg.DEBUG_MSG("KBEngine::onImportClientMessagesCompleted: send importEntityDef(" + entitydefImported_ + ") ...");
-					Bundle bundle = Bundle.getObject();
+					Bundle bundle = Bundle.createObject();
 					bundle.newMessage(Message.messages["Baseapp_importClientEntityDef"]);
 					bundle.send(_networkInterface);
 					Event.fireOut("Baseapp_importClientEntityDef", new object[]{});
@@ -1207,7 +1207,7 @@
 			
 			if(!loginappMessageImported_)
 			{
-				Bundle bundle = Bundle.getObject();
+				Bundle bundle = Bundle.createObject();
 				bundle.newMessage(Message.messages["Loginapp_importClientMessages"]);
 				bundle.send(_networkInterface);
 				Dbg.DEBUG_MSG("KBEngine::onOpenLoginapp_resetpassword: send importClientMessages ...");
@@ -1239,7 +1239,7 @@
 			}
 			else
 			{
-				Bundle bundle = Bundle.getObject();
+				Bundle bundle = Bundle.createObject();
 				bundle.newMessage(Message.messages["Loginapp_reqAccountResetPassword"]);
 				bundle.writeString(username);
 				bundle.send(_networkInterface);
@@ -1274,7 +1274,7 @@
 		*/
 		public void bindAccountEmail(string emailAddress)
 		{
-			Bundle bundle = Bundle.getObject();
+			Bundle bundle = Bundle.createObject();
 			bundle.newMessage(Message.messages["Baseapp_reqAccountBindEmail"]);
 			bundle.writeInt32(entity_id);
 			bundle.writeString(password);
@@ -1298,7 +1298,7 @@
 		*/
 		public void newPassword(string old_password, string new_password)
 		{
-			Bundle bundle = Bundle.getObject();
+			Bundle bundle = Bundle.createObject();
 			bundle.newMessage(Message.messages["Baseapp_reqAccountNewPassword"]);
 			bundle.writeInt32(entity_id);
 			bundle.writeString(old_password);
@@ -1338,7 +1338,7 @@
 			}
 			else
 			{
-				Bundle bundle = Bundle.getObject();
+				Bundle bundle = Bundle.createObject();
 				bundle.newMessage(Message.messages["Loginapp_reqCreateAccount"]);
 				bundle.writeString(username);
 				bundle.writeString(password);
@@ -1355,7 +1355,7 @@
 			
 			if(!loginappMessageImported_)
 			{
-				Bundle bundle = Bundle.getObject();
+				Bundle bundle = Bundle.createObject();
 				bundle.newMessage(Message.messages["Loginapp_importClientMessages"]);
 				bundle.send(_networkInterface);
 				Dbg.DEBUG_MSG("KBEngine::onOpenLoginapp_createAccount: send importClientMessages ...");
@@ -1488,7 +1488,7 @@
 			{
 				Client_onUpdatePropertys(entityMessage);
 				_bufferedCreateEntityMessage.Remove(eid);
-				entityMessage.putToPool();
+				entityMessage.reclaimObject();
 			}
 			
 			entity.__init__();
@@ -1570,7 +1570,7 @@
 					return;
 				}
 
-				MemoryStream stream1 = MemoryStream.getObject();
+				MemoryStream stream1 = MemoryStream.createObject();
 				stream1.wpos = stream.wpos;
 				stream1.rpos = stream.rpos - 4;
 				Array.Copy(stream.data(), stream1.data(), stream.data().Length);
@@ -1741,7 +1741,7 @@
 				
 				Client_onUpdatePropertys(entityMessage);
 				_bufferedCreateEntityMessage.Remove(eid);
-				entityMessage.putToPool();
+				entityMessage.reclaimObject();
 				
 				entity.isOnGround = isOnGround > 0;
 				entity.set_direction(entity.getDefinedProperty("direction"));
@@ -1958,7 +1958,7 @@
 				playerEntity._entityLastLocalPos = position;
 				playerEntity._entityLastLocalDir = direction;
 
-				Bundle bundle = Bundle.getObject();
+				Bundle bundle = Bundle.createObject();
 				bundle.newMessage(Message.messages["Baseapp_onUpdateDataFromClient"]);
 				bundle.writeFloat(position.x);
 				bundle.writeFloat(position.y);
@@ -1987,7 +1987,7 @@
 					entity._entityLastLocalPos = position;
 					entity._entityLastLocalDir = direction;
 
-					Bundle bundle = Bundle.getObject();
+					Bundle bundle = Bundle.createObject();
 					bundle.newMessage(Message.messages["Baseapp_onUpdateDataFromClientForControlledEntity"]);
 					bundle.writeInt32(entity.id);
 					bundle.writeFloat(position.x);
