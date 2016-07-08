@@ -86,7 +86,7 @@
 		
 		// 服务端与客户端的版本号以及协议MD5
 		public string serverVersion = "";
-		public string clientVersion = "0.8.0";
+		public string clientVersion = "0.8.10";
 		public string serverScriptVersion = "";
 		public string clientScriptVersion = "0.1.0";
 		public string serverProtocolMD5 = "";
@@ -258,6 +258,7 @@
 			
 			if (_networkInterface != null)
 				_networkInterface.reset();
+
 			_networkInterface = new NetworkInterface2();
 			
 			_spacedatas.Clear();
@@ -1817,7 +1818,9 @@
 			}
 			else
 			{
-				_controlledEntities.Remove(entity);
+				if(_controlledEntities.Remove(entity))
+					Event.fireOut("onLoseControlledEntity", new object[]{entity});
+
 				entities.Remove(eid);
 				entity.onDestroy();
 				_entityIDAliasIDList.Remove(eid);
@@ -1905,7 +1908,9 @@
 				// 如果被控制者是玩家自己，那表示玩家自己被其它人控制了
 				// 所以玩家自己不应该进入这个被控制列表
 				if (player().id != entity.id)
+				{
 					_controlledEntities.Add(entity);
+				}
 			}
 			else
 			{
@@ -1917,12 +1922,12 @@
 			try
 			{
 				entity.onControlled(isCont);
+				Event.fireOut("onControlled", new object[]{entity, isCont});
 			}
 			catch (Exception e)
 			{
 				Dbg.ERROR_MSG(string.Format("KBEngine::Client_onControlEntity: entity id = '{0}', is controlled = '{1}', error = '{1}'", eid, isCont, e));
 			}
-
 		}
 
 		/*
@@ -2030,6 +2035,7 @@
 		public void clearEntities(bool isall)
 		{
 			_controlledEntities.Clear();
+
 			if (!isall)
 			{
 				Entity entity = player();
@@ -2139,7 +2145,9 @@
 				entity.leaveWorld();
 			}
 
-			_controlledEntities.Remove(entity);
+			if(_controlledEntities.Remove(entity))
+				Event.fireOut("onLoseControlledEntity", new object[]{entity});
+
 			entities.Remove(eid);
 			entity.onDestroy();
 		}
@@ -2157,6 +2165,7 @@
 			if (entity != null && entity.isControlled)
 			{
 				entity.position.Set(_entityServerPos.x, _entityServerPos.y, _entityServerPos.z);
+				Event.fireOut("updatePosition", new object[]{entity});
 				entity.onUpdateVolatileData();
 			}
 		}
@@ -2171,6 +2180,7 @@
 			{
 				entity.position.x = _entityServerPos.x;
 				entity.position.z = _entityServerPos.z;
+				Event.fireOut("updatePosition", new object[]{entity});
 				entity.onUpdateVolatileData();
 			}
 		}
@@ -2186,6 +2196,7 @@
 			if (entity != null && entity.isControlled)
 			{
 				entity.direction.Set(roll, pitch, yaw);
+				Event.fireOut("set_direction", new object[]{entity});
 				entity.onUpdateVolatileData();
 			}
 		}
