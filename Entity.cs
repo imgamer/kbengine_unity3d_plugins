@@ -373,11 +373,9 @@
 		{
 			Vector3 v = (Vector3)getDefinedProperty("direction");
 			
-			v.x = v.x * 360 / ((float)System.Math.PI * 2);
-			v.y = v.y * 360 / ((float)System.Math.PI * 2);
-			v.z = v.z * 360 / ((float)System.Math.PI * 2);
-			
-			direction = v;
+			direction.x = v.x * 360 / ((float)System.Math.PI * 2);
+			direction.y = v.y * 360 / ((float)System.Math.PI * 2);
+			direction.z = v.z * 360 / ((float)System.Math.PI * 2);
 			
 			//Dbg.DEBUG_MSG(className + "::set_direction: " + old + " => " + v); 
 			

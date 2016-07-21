@@ -132,7 +132,8 @@
 		// 所有服务端错误码对应的错误描述
 		public static Dictionary<UInt16, ServerErr> serverErrs = new Dictionary<UInt16, ServerErr>(); 
 		
-		private System.DateTime _lastticktime = System.DateTime.Now;
+		private System.DateTime _lastTickTime = System.DateTime.Now;
+		private System.DateTime _lastTickCBTime = System.DateTime.Now;
 		private System.DateTime _lastUpdateToServerTime = System.DateTime.Now;
 		
 		// 玩家当前所在空间的id， 以及空间对应的资源
@@ -249,7 +250,8 @@
 			_entityIDAliasIDList.Clear();
 			_bufferedCreateEntityMessage.Clear();
 			
-			_lastticktime = System.DateTime.Now;
+			_lastTickTime = System.DateTime.Now;
+			_lastTickCBTime = System.DateTime.Now;
 			_lastUpdateToServerTime = System.DateTime.Now;
 			
 			spaceID = 0;
@@ -387,13 +389,24 @@
 			if(!loginappMessageImported_ && !baseappMessageImported_)
 				return;
 			
-			TimeSpan span = DateTime.Now - _lastticktime; 
+			TimeSpan span = DateTime.Now - _lastTickTime;
 			
 			// 更新玩家的位置与朝向到服务端
 			updatePlayerToServer();
 			
 			if(span.Seconds > 15)
 			{
+				span = _lastTickCBTime - _lastTickTime;
+				
+				// 如果心跳回调接收时间小于心跳发送时间，说明没有收到回调
+				// 此时应该通知客户端掉线了
+				if(span.Seconds < 0)
+				{
+					Dbg.ERROR_MSG("sendTick: Receive appTick timeout!");
+					_networkInterface.close();
+					return;
+				}
+
 				Message Loginapp_onClientActiveTickMsg = null;
 				Message Baseapp_onClientActiveTickMsg = null;
 				
@@ -419,10 +432,18 @@
 					}
 				}
 				
-				_lastticktime = System.DateTime.Now;
+				_lastTickTime = System.DateTime.Now;
 			}
 		}
-		
+
+		/*
+			服务器心跳回调
+		*/
+		public void Client_onAppActiveTickCB()
+		{
+			_lastTickCBTime = System.DateTime.Now;
+		}
+
 		/*
 			与服务端握手，与任何一个进程连接之后应该第一时间进行握手
 		*/
@@ -1968,10 +1989,25 @@
 				bundle.writeFloat(position.x);
 				bundle.writeFloat(position.y);
 				bundle.writeFloat(position.z);
+				
+				double x = ((double)direction.x / 360 * (System.Math.PI * 2));
+				double y = ((double)direction.y / 360 * (System.Math.PI * 2));
+				double z = ((double)direction.z / 360 * (System.Math.PI * 2));
+				
+				// 根据弧度转角度公式会出现负数
+				// unity会自动转化到0~360度之间，这里需要做一个还原
+				if(x - System.Math.PI > 0.0)
+					x -= System.Math.PI * 2;
 
-				bundle.writeFloat((float)((double)direction.x / 360 * 6.283185307179586));
-				bundle.writeFloat((float)((double)direction.y / 360 * 6.283185307179586));
-				bundle.writeFloat((float)((double)direction.z / 360 * 6.283185307179586));
+				if(y - System.Math.PI > 0.0)
+					y -= System.Math.PI * 2;
+				
+				if(z - System.Math.PI > 0.0)
+					z -= System.Math.PI * 2;
+				
+				bundle.writeFloat((float)x);
+				bundle.writeFloat((float)y);
+				bundle.writeFloat((float)z);
 				bundle.writeUint8((Byte)(playerEntity.isOnGround == true ? 1 : 0));
 				bundle.writeUint32(spaceID);
 				bundle.send(_networkInterface);
@@ -1999,9 +2035,24 @@
 					bundle.writeFloat(position.y);
 					bundle.writeFloat(position.z);
 
-					bundle.writeFloat((float)((double)direction.x / 360 * 6.283185307179586));
-					bundle.writeFloat((float)((double)direction.y / 360 * 6.283185307179586));
-					bundle.writeFloat((float)((double)direction.z / 360 * 6.283185307179586));
+					double x = ((double)direction.x / 360 * (System.Math.PI * 2));
+					double y = ((double)direction.y / 360 * (System.Math.PI * 2));
+					double z = ((double)direction.z / 360 * (System.Math.PI * 2));
+				
+					// 根据弧度转角度公式会出现负数
+					// unity会自动转化到0~360度之间，这里需要做一个还原
+					if(x - System.Math.PI > 0.0)
+						x -= System.Math.PI * 2;
+
+					if(y - System.Math.PI > 0.0)
+						y -= System.Math.PI * 2;
+					
+					if(z - System.Math.PI > 0.0)
+						z -= System.Math.PI * 2;
+					
+					bundle.writeFloat((float)x);
+					bundle.writeFloat((float)y);
+					bundle.writeFloat((float)z);
 					bundle.writeUint8((Byte)(entity.isOnGround == true ? 1 : 0));
 					bundle.writeUint32(spaceID);
 					bundle.send(_networkInterface);
@@ -2304,7 +2355,7 @@
 		{
 			Int32 eid = getAoiEntityIDFromStream(stream);
 			
-			float y = stream.readPackY();
+			SByte y = stream.readInt8();
 			
 			_updateVolatileData(eid, 0.0f, 0.0f, 0.0f, y, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, -1);
 		}
