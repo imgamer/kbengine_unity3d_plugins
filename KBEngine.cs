@@ -597,6 +597,8 @@
 		
 		private void onConnectTo_loginapp_callback(string ip, int port, bool success, object userData)
 		{
+			_lastTickCBTime = System.DateTime.Now;
+			
 			if(!success)
 			{
 				Dbg.ERROR_MSG(string.Format("KBEngine::login_loginapp(): connect {0}:{1} is error!", ip, port));  
@@ -613,6 +615,8 @@
 		
 		private void onLogin_loginapp()
 		{
+			_lastTickCBTime = System.DateTime.Now;
+			
 			if(!loginappMessageImported_)
 			{
 				var bundle = Bundle.createObject();
@@ -652,6 +656,8 @@
 
 		private void onConnectTo_baseapp_callback(string ip, int port, bool success, object userData)
 		{
+			_lastTickCBTime = System.DateTime.Now;
+			
 			if(!success)
 			{
 				Dbg.ERROR_MSG(string.Format("KBEngine::login_baseapp(): connect {0}:{1} is error!", ip, port));
@@ -668,6 +674,8 @@
 		
 		private void onLogin_baseapp()
 		{
+			_lastTickCBTime = System.DateTime.Now;
+			
 			if(!baseappMessageImported_)
 			{
 				var bundle = Bundle.createObject();
@@ -710,6 +718,8 @@
 			bundle.writeUint64(entity_uuid);
 			bundle.writeInt32(entity_id);
 			bundle.send(_networkInterface);
+			
+			_lastTickCBTime = System.DateTime.Now;
 		}
 		
 		/*
@@ -1226,7 +1236,8 @@
 			Dbg.DEBUG_MSG("KBEngine::onOpenLoginapp_resetpassword: successfully!");
 			currserver = "loginapp";
 			currstate = "resetpassword";
-			
+			_lastTickCBTime = System.DateTime.Now;
+
 			if(!loginappMessageImported_)
 			{
 				Bundle bundle = Bundle.createObject();
@@ -1270,6 +1281,8 @@
 
 		private void onConnectTo_resetpassword_callback(string ip, int port, bool success, object userData)
 		{
+			_lastTickCBTime = System.DateTime.Now;
+			
 			if(!success)
 			{
 				Dbg.ERROR_MSG(string.Format("KBEngine::resetpassword_loginapp(): connect {0}:{1} is error!", ip, port));
@@ -1374,6 +1387,7 @@
 			Dbg.DEBUG_MSG("KBEngine::onOpenLoginapp_createAccount: successfully!");
 			currserver = "loginapp";
 			currstate = "createAccount";
+			_lastTickCBTime = System.DateTime.Now;
 			
 			if(!loginappMessageImported_)
 			{
@@ -1390,6 +1404,8 @@
 		
 		private void onConnectTo_createAccount_callback(string ip, int port, bool success, object userData)
 		{
+			_lastTickCBTime = System.DateTime.Now;
+			
 			if(!success)
 			{
 				Dbg.ERROR_MSG(string.Format("KBEngine::createAccount_loginapp(): connect {0}:{1} is error!", ip, port));

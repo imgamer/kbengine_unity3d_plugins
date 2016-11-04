@@ -155,7 +155,7 @@
 					{
 						if(inWorld)
 						{
-							if(prop.isOwnerOnly() && id != KBEngineApp.app.entity_id)
+							if(prop.isOwnerOnly() && !isPlayer())
 								continue;
 
 							setmethod.Invoke(this, new object[]{oldval});
