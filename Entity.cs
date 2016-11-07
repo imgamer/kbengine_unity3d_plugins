@@ -28,9 +28,20 @@
 		
 		public Mailbox baseMailbox = null;
 		public Mailbox cellMailbox = null;
-		
-		// enterworld之后设置为true
-		public bool inWorld = false;
+
+        // 本地坐标
+        public Vector3 localPosition = Vector3.zero;
+        public Vector3 localDirection = Vector3.zero;
+
+        // 父对象
+        public Int32 parentID = 0;
+        public Entity parent = null;
+
+        // 子对象列表
+        public Dictionary<Int32, Entity> children = new Dictionary<int, Entity>();
+
+        // enterworld之后设置为true
+        public bool inWorld = false;
 
 		/// <summary>
 		/// This property is True if it is a client-only entity.
@@ -74,8 +85,28 @@
 				iddefpropertys_.Add(e.properUtype, newp);
 			}
 		}
-		
-		public virtual void onDestroy ()
+
+        public virtual void destroy()
+        {
+            onDestroy();
+
+            // 销毁自身只代表自己不见了，不代表对方没有父了
+            // 因此这里只改变父对象的指向，但parentID的值仍然保留
+            foreach (KeyValuePair<Int32, Entity> dic in children)
+                dic.Value.parent = null;
+            children.Clear();
+
+            // 解引用
+            if (parent != null)
+            {
+                parent.removeChild(this);
+                parent = null;
+            }
+
+            renderObj = null;
+        }
+
+        public virtual void onDestroy ()
 		{
 		}
 		
@@ -357,8 +388,6 @@
 		
 		public virtual void set_position(object old)
 		{
-			Vector3 v = (Vector3)getDefinedProperty("position");
-			position = v;
 			//Dbg.DEBUG_MSG(className + "::set_position: " + old + " => " + v); 
 			
 			if(isPlayer())
@@ -368,17 +397,23 @@
 				Event.fireOut("set_position", new object[]{this});
 		}
 
+		/// <summary>
+		/// 服务器更新易变数据
+		/// </summary>
 		public virtual void onUpdateVolatileData()
+		{
+		}
+
+		/// <summary>
+		/// 用于继承者重载，当Entity有父对象时，
+		/// 其父对象改变了世界坐标或朝向时会在子对象身上会触发此方法。
+		/// </summary>
+		public virtual void onUpdateVolatileDataByParent()
 		{
 		}
 		
 		public virtual void set_direction(object old)
 		{
-			Vector3 v = (Vector3)getDefinedProperty("direction");
-			
-			direction.x = v.x * 360 / ((float)System.Math.PI * 2);
-			direction.y = v.y * 360 / ((float)System.Math.PI * 2);
-			direction.z = v.z * 360 / ((float)System.Math.PI * 2);
 			
 			//Dbg.DEBUG_MSG(className + "::set_direction: " + old + " => " + v); 
 			
@@ -398,6 +433,244 @@
 		{
 		
 		}
+
+        /** 本地坐标与世界坐标互转 */
+        public Vector3 positionLocalToWorld(Vector3 localPos)
+        {
+            Quaternion p_local = new Quaternion(localPos.x, localPos.y, localPos.z, 0);
+      
+			Quaternion qx_r = Quaternion.AngleAxis(direction.x, new Vector3(1, 0, 0));
+			Quaternion qy_r = Quaternion.AngleAxis(direction.y, new Vector3(0, 1, 0));
+			Quaternion qz_r = Quaternion.AngleAxis(direction.z, new Vector3(0, 0, 1));
+
+            Quaternion q_r = qy_r * qx_r * qz_r; //欧拉旋转的旋转顺序是Z、X、Y，不同的旋转顺序方向，需要在这里修改，Z是最上层,qy*qx*qz，从右向左
+            Quaternion q_rr = Quaternion.Inverse(q_r); //逆运算
+            Quaternion p = q_r * p_local * q_rr; //p经过q_r四元数旋转得到p0，所以p=q*p0*q^-1
+
+            return new Vector3(p.x + position.x, p.y + position.y, p.z + position.z);
+        }
+
+        public Vector3 positionWorldToLocal(Vector3 worldPos)
+        {
+			Quaternion qx_r = Quaternion.AngleAxis(direction.x, new Vector3(1, 0, 0));
+			Quaternion qy_r = Quaternion.AngleAxis(direction.y, new Vector3(0, 1, 0));
+			Quaternion qz_r = Quaternion.AngleAxis(direction.z, new Vector3(0, 0, 1));
+
+            Quaternion q_r = qy_r * qx_r * qz_r; //欧拉旋转的旋转顺序是Z、X、Y，不同的旋转顺序方向，需要在这里修改，Z是最上层,qy*qx*qz，从右向左
+            Quaternion q_rr = Quaternion.Inverse(q_r); //逆运算
+
+            Vector3 g_pos = new Vector3(worldPos.x - position.x, worldPos.y - position.y, worldPos.z - position.z);
+            Quaternion g_q = new Quaternion(g_pos.x, g_pos.y, g_pos.z, 0);
+            Quaternion p_local = q_rr * g_q * q_r;
+
+            return new Vector3(p_local.x, p_local.y, p_local.z);
+        }
+
+        public Vector3 directionLocalToWorld(Vector3 localDir)
+        {
+
+			Quaternion q_parentdir = Quaternion.Euler(direction);
+			Quaternion q_childdir = Quaternion.Euler(localDir);
+
+            Quaternion wr = q_parentdir * q_childdir;
+            Vector3 result = wr.eulerAngles;
+
+            return result;
+        }
+
+        public Vector3 directionWorldToLocal(Vector3 worldDir)
+        {
+			Quaternion q_parentdir = Quaternion.Euler(direction);
+			Quaternion q_childworlddir = Quaternion.Euler(worldDir);
+
+            Quaternion pr_r = Quaternion.Inverse(q_parentdir); //逆运算
+            Quaternion lr = pr_r * q_childworlddir;
+
+            Vector3 result = lr.eulerAngles;
+
+			return result;
+        }
+
+        public void setParent(Entity ent)
+        {
+            if (ent == parent)
+                return;
+
+            Entity old = parent;
+            if (parent != null)
+            {
+                parentID = 0;
+                parent.removeChild(this);
+                localPosition = position;
+                localDirection = direction;
+				parent = null;
+				if (inWorld)
+					onLoseParentEntity();
+			}
+
+            parent = ent;
+
+            if (parent != null)
+            {
+                parentID = ent.id;
+                parent.addChild(this);
+                localPosition = parent.positionWorldToLocal(position);
+                localDirection = parent.directionWorldToLocal(direction);
+				if (inWorld)
+					onGotParentEntity();
+            }
+        }
+
+        /// <summary>
+        /// 当获得父对象时，此方法被触发
+        /// </summary>
+        public virtual void onGotParentEntity()
+        {
+        }
+
+        /// <summary>
+        /// 当失去父对象时，此方法被触发
+        /// </summary>
+        public virtual void onLoseParentEntity()
+        {
+        }
+
+        public void addChild(Entity ent)
+        {
+            children.Add(ent.id, ent);
+        }
+
+        public void removeChild(Entity ent)
+        {
+            children.Remove(ent.id);
+        }
+
+        public Entity getChild(Int32 eid)
+        {
+            Entity entity = null;
+            children.TryGetValue(eid, out entity);
+            return entity;
+        }
+
+        public void parentPositionChangedNotify()
+        {
+            if (children.Count == 0)
+                return;
+
+			foreach (KeyValuePair<Int32, Entity> dic in children)
+			{
+				Entity ent = dic.Value;
+
+				// 更新世界坐标
+				ent.position = positionLocalToWorld(ent.localPosition);
+				ent.setDefinedProperty("position", ent.position);
+
+				// 设置最后更新值，以避免被控制者向服务器发送世界坐标或朝向
+				ent._entityLastLocalPos = ent.position;
+
+				// 对于玩家自已或被本机控制的entity而言，因父对象的移动而移动，
+				// 新坐标不需要通知服务器，因为每个客户端都会做同样的处理，服务器也会自行计算。
+				if (ent.isPlayer() || ent.isControlled)
+					ent._entityLastLocalPos = ent.position;
+
+				ent.onUpdateVolatileDataByParent();
+			}
+        }
+
+        public void parentDirectionChangedNotify()
+        {
+            if (children.Count == 0)
+                return;
+
+			foreach (KeyValuePair<Int32, Entity> dic in children)
+			{
+				Entity ent = dic.Value;
+
+				// 父对象的朝向改变会引发子对象的世界坐标的改变
+				ent.position = positionLocalToWorld(ent.localPosition);
+				//ent.setDefinedProperty("position", ent.position);
+
+				// 设置最后更新值，以避免被控制者向服务器发送世界坐标或朝向
+				ent._entityLastLocalPos = ent.position;
+
+				// 更新世界朝向
+				ent.direction = directionLocalToWorld(ent.localDirection);
+				//ent.setDefinedProperty("direction", ent.direction);
+
+				// 设置最后更新值，以避免被控制者向服务器发送世界坐标或朝向
+				ent._entityLastLocalDir = ent.direction;
+
+				// 对于玩家自已或被本机控制的entity而言，因父对象的移动而移动，
+				// 新坐标不需要通知服务器，因为每个客户端都会做同样的处理，服务器也会自行计算。
+				if (ent.isPlayer() || ent.isControlled)
+				{
+					ent._entityLastLocalPos = ent.position;
+					ent._entityLastLocalDir = ent.direction;
+				}
+
+				ent.onUpdateVolatileDataByParent();
+			}
+        }
+
+		/// <summary>
+		/// 内部接口，用于引擎设置entity的坐标
+		/// </summary>
+		/// <param name="pos"></param>
+		internal void setPositionFromServer(Vector3 pos)
+		{
+			position = pos;
+			//setDefinedProperty("position", pos);
+
+			if (inWorld)
+				parentPositionChangedNotify();
+		}
+
+		/// <summary>
+		/// 内部接口，用于引擎设置entity的坐标
+		/// </summary>
+		/// <param name="dir"></param>
+		internal void setDirectionFromServer(Vector3 dir)
+		{
+			direction = dir;
+			//setDefinedProperty("direction", dir);
+
+			if (inWorld)
+				parentDirectionChangedNotify();
+		}
+
+		/// <summary>
+		/// 用于被控制者（如角色）定期向服务器更新其世界坐标和世界朝向
+		/// </summary>
+		/// <param name="pos"></param>
+		public void updateVolatileDataForServer(Vector3 pos, Vector3 dir)
+		{
+			if (Vector3.Distance(position, pos) > 0.001f)
+			{
+
+				position = pos;
+
+				if (parent != null)
+					localPosition = parent.positionWorldToLocal(pos);
+				else
+					localPosition = position;
+			}
+
+			if (Vector3.Distance(direction, dir) > 0.001f)
+			{
+
+				direction = dir;
+
+				if (parent != null)
+					localDirection = parent.directionWorldToLocal(direction);
+				else
+					localDirection = dir;
+			}
+
+			onUpdateVolatileDataByParent();
+		}
+
+
+
     }
-    
+
 }

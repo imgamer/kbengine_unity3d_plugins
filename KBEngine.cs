@@ -322,8 +322,10 @@
 
 			entities[eid] = entity;
 
-			entity.position.Set(position.x, position.y, position.z);
-			entity.direction.Set(direction.x, direction.y, direction.z);
+			Vector3 newDir = new Vector3(direction.z, direction.x, direction.y);
+
+			entity.setPositionFromServer(position);
+			entity.setDirectionFromServer(newDir);
 
 			entity.isClientOnly = true;
 			entity.isOnGround = true;
@@ -1642,8 +1644,31 @@
 				 // Dbg.DEBUG_MSG("KBEngine::Client_onUpdatePropertys: " + entity.className + "(id=" + eid  + " " + 
 				 // propertydata.name + "=" + val + "), hasSetMethod=" + setmethod + "!");
 			
-				entity.setDefinedPropertyByUType(utype, val);
-				if(setmethod != null)
+                // 处理有父对象时本地朝向、坐标的转換
+                if (propertydata.name == "position")
+                {
+					Vector3 newPos = (Vector3)val;
+					if (entity.parent != null)
+						entity.localPosition = entity.parent.positionWorldToLocal(newPos);
+					else
+						entity.localPosition = newPos;
+					entity._entityLastLocalPos = newPos;
+					entity.setPositionFromServer(newPos);
+                }
+                else if (propertydata.name == "direction")
+                {
+					Vector3 newDir = KBEMath.KBEngine2UnityDirection((Vector3)val);
+					if (entity.parent != null)
+						entity.localDirection = entity.parent.directionWorldToLocal(newDir);
+					else
+						entity.localDirection = newDir;
+					entity._entityLastLocalDir = newDir;
+					entity.setDirectionFromServer(newDir);
+                }
+				else
+					entity.setDefinedPropertyByUType(utype, val);
+
+                if (setmethod != null)
 				{
 					if(propertydata.isBase())
 					{
@@ -1741,7 +1766,11 @@
 			
 			if(stream.length() > 0)
 				isOnGround = stream.readInt8();
-			
+
+            Int32 parentID = 0;
+            if (stream.length() > 0)
+                parentID = stream.readInt32();
+
 			string entityType = EntityDef.idmoduledefs[uentityType].name;
 			// Dbg.DEBUG_MSG("KBEngine::Client_onEntityEnterWorld: " + entityType + "(" + eid + "), spaceID(" + KBEngineApp.app.spaceID + ")!");
 			
@@ -1782,18 +1811,47 @@
 				entityMessage.reclaimObject();
 				
 				entity.isOnGround = isOnGround > 0;
-				entity.set_direction(entity.getDefinedProperty("direction"));
-				entity.set_position(entity.getDefinedProperty("position"));
-								
-				entity.__init__();
+
+				// @TODO(penghuawei): 理论上，下面两行应该不用执行，
+				// 因为前面的Client_onUpdatePropertys()必然会触发
+				//entity.set_direction(entity.direction);
+				//entity.set_position(entity.position);
+
+                if (parentID > 0)
+                {
+                    // 不管父对象是否存在，都应该设置这个
+                    entity.parentID = parentID;
+
+					Entity parentEntity = findEntity(parentID);
+                    if (parentEntity != null)
+                    {
+                        entity.setParent(parentEntity);
+                    }
+                    else
+                    {
+                        // @TODO(penghuawei): 这里将来需要考虑等父对象过来后再一起出现，以避免视角上的不良体验，
+						//                    当然，也可以让使用者自己在entity.enterWorld()里面根据parentID和parent状态自己处理。
+                    }
+                }
+
+                entity.__init__();
 				entity.inited = true;
 				entity.inWorld = true;
 				entity.enterWorld();
 				
 				if(_args.isOnInitCallPropertysSetMethods)
 					entity.callPropertysSetMethods();
-			}
-			else
+
+                // 通知其它entity，有新的entity出现了，
+                // 以让其它依赖该entity的子类entity能指向它
+                // @TODO(penghuawei): 当前先简单遍历，后面可以考虑优化成只向有父对象的entity广播，以増加性能。
+                foreach (KeyValuePair<Int32, Entity> dic in entities)
+                {
+                    if (dic.Value.parentID == entity.id)
+                        dic.Value.setParent(entity);
+                }
+            }
+            else
 			{
 				if(!entity.inWorld)
 				{
@@ -1809,8 +1867,8 @@
 					entity.cellMailbox.className = entityType;
 					entity.cellMailbox.type = Mailbox.MAILBOX_TYPE.MAILBOX_TYPE_CELL;
 					
-					entity.set_direction(entity.getDefinedProperty("direction"));
-					entity.set_position(entity.getDefinedProperty("position"));					
+					entity.set_direction(entity.direction);
+					entity.set_position(entity.position);					
 
 					_entityServerPos = entity.position;
 					entity.isOnGround = isOnGround > 0;
@@ -1859,7 +1917,7 @@
 					Event.fireOut("onLoseControlledEntity", new object[]{entity});
 
 				entities.Remove(eid);
-				entity.onDestroy();
+				entity.destroy();
 				_entityIDAliasIDList.Remove(eid);
 			}
 		}
@@ -1997,6 +2055,8 @@
 			
 			if(posHasChanged || dirHasChanged)
 			{
+				//Dbg.ERROR_MSG("KBEngineApp::updatePlayerToServer(), position = " + playerEntity.position + ", localPosition = " + playerEntity.localPosition + ", _entityLastLocalPos = " + playerEntity._entityLastLocalPos);
+				//Dbg.ERROR_MSG("KBEngineApp::updatePlayerToServer(), direction = " + playerEntity.direction + ", localDirection = " + playerEntity.localDirection + ", _entityLastLocalDir = " + playerEntity._entityLastLocalDir);
 				playerEntity._entityLastLocalPos = position;
 				playerEntity._entityLastLocalDir = direction;
 
@@ -2005,25 +2065,12 @@
 				bundle.writeFloat(position.x);
 				bundle.writeFloat(position.y);
 				bundle.writeFloat(position.z);
-				
-				double x = ((double)direction.x / 360 * (System.Math.PI * 2));
-				double y = ((double)direction.y / 360 * (System.Math.PI * 2));
-				double z = ((double)direction.z / 360 * (System.Math.PI * 2));
-				
-				// 根据弧度转角度公式会出现负数
-				// unity会自动转化到0~360度之间，这里需要做一个还原
-				if(x - System.Math.PI > 0.0)
-					x -= System.Math.PI * 2;
 
-				if(y - System.Math.PI > 0.0)
-					y -= System.Math.PI * 2;
-				
-				if(z - System.Math.PI > 0.0)
-					z -= System.Math.PI * 2;
-				
-				bundle.writeFloat((float)x);
-				bundle.writeFloat((float)y);
-				bundle.writeFloat((float)z);
+				Vector3 dir = KBEMath.Unity2KBEngineDirection(direction);
+
+				bundle.writeFloat(dir.x);
+				bundle.writeFloat(dir.y);
+				bundle.writeFloat(dir.z);
 				bundle.writeUint8((Byte)(playerEntity.isOnGround == true ? 1 : 0));
 				bundle.writeUint32(spaceID);
 				bundle.send(_networkInterface);
@@ -2051,24 +2098,11 @@
 					bundle.writeFloat(position.y);
 					bundle.writeFloat(position.z);
 
-					double x = ((double)direction.x / 360 * (System.Math.PI * 2));
-					double y = ((double)direction.y / 360 * (System.Math.PI * 2));
-					double z = ((double)direction.z / 360 * (System.Math.PI * 2));
-				
-					// 根据弧度转角度公式会出现负数
-					// unity会自动转化到0~360度之间，这里需要做一个还原
-					if(x - System.Math.PI > 0.0)
-						x -= System.Math.PI * 2;
+					Vector3 dir = KBEMath.Unity2KBEngineDirection(direction);
 
-					if(y - System.Math.PI > 0.0)
-						y -= System.Math.PI * 2;
-					
-					if(z - System.Math.PI > 0.0)
-						z -= System.Math.PI * 2;
-					
-					bundle.writeFloat((float)x);
-					bundle.writeFloat((float)y);
-					bundle.writeFloat((float)z);
+					bundle.writeFloat(dir.x);
+					bundle.writeFloat(dir.y);
+					bundle.writeFloat(dir.z);
 					bundle.writeUint8((Byte)(entity.isOnGround == true ? 1 : 0));
 					bundle.writeUint32(spaceID);
 					bundle.send(_networkInterface);
@@ -2115,7 +2149,7 @@
 					if(dic.Value.inWorld)
 						dic.Value.leaveWorld();
 					
-				    dic.Value.onDestroy();
+				    dic.Value.destroy();
 				}  
 		
 				entities.Clear();
@@ -2128,7 +2162,7 @@
 					if(dic.Value.inWorld)
 						dic.Value.leaveWorld();
 
-				    dic.Value.onDestroy();
+				    dic.Value.destroy();
 				}  
 		
 				entities.Clear();
@@ -2216,7 +2250,7 @@
 				Event.fireOut("onLoseControlledEntity", new object[]{entity});
 
 			entities.Remove(eid);
-			entity.onDestroy();
+			entity.destroy();
 		}
 		
 		/*
@@ -2231,7 +2265,12 @@
 			var entity = player();
 			if (entity != null && entity.isControlled)
 			{
-				entity.position.Set(_entityServerPos.x, _entityServerPos.y, _entityServerPos.z);
+				if (entity.parent != null)
+					entity.localPosition = entity.parent.positionWorldToLocal(_entityServerPos);
+				else
+					entity.localPosition = _entityServerPos;
+
+				entity.setPositionFromServer(_entityServerPos);
 				Event.fireOut("updatePosition", new object[]{entity});
 				entity.onUpdateVolatileData();
 			}
@@ -2245,8 +2284,12 @@
 			var entity = player();
 			if (entity != null && entity.isControlled)
 			{
-				entity.position.x = _entityServerPos.x;
-				entity.position.z = _entityServerPos.z;
+				if (entity.parent != null)
+					entity.localPosition = entity.parent.positionWorldToLocal(_entityServerPos);
+				else
+					entity.localPosition = _entityServerPos;
+
+				entity.setPositionFromServer(_entityServerPos);
 				Event.fireOut("updatePosition", new object[]{entity});
 				entity.onUpdateVolatileData();
 			}
@@ -2255,14 +2298,20 @@
 		public void Client_onUpdateBaseDir(MemoryStream stream)
 		{
 			float yaw, pitch, roll;
-			yaw = stream.readFloat() * 360 / ((float)System.Math.PI * 2);
-			pitch = stream.readFloat() * 360 / ((float)System.Math.PI * 2);
-			roll = stream.readFloat() * 360 / ((float)System.Math.PI * 2);
+			yaw = stream.readFloat();
+			pitch = stream.readFloat();
+			roll = stream.readFloat();
 
 			var entity = player();
 			if (entity != null && entity.isControlled)
 			{
-				entity.direction.Set(roll, pitch, yaw);
+				Vector3 dir = KBEMath.KBEngine2UnityDirection(roll, pitch, yaw);
+				if (entity.parent != null)
+					entity.localDirection = entity.parent.directionWorldToLocal(dir);
+				else
+					entity.localDirection = dir;
+
+				entity.setDirectionFromServer(dir);
 				Event.fireOut("set_direction", new object[]{entity});
 				entity.onUpdateVolatileData();
 			}
@@ -2294,36 +2343,42 @@
 				Dbg.ERROR_MSG("KBEngine::Client_onSetEntityPosAndDir: entity(" + eid + ") not found!");
 				return;
 			}
+
+			Vector3 newPos, newDir;
+			newPos.x = stream.readFloat();
+			newPos.y = stream.readFloat();
+			newPos.z = stream.readFloat();
+
+			newDir.x = stream.readFloat();
+			newDir.y = stream.readFloat();
+			newDir.z = stream.readFloat();
+			newDir = KBEMath.KBEngine2UnityDirection(newDir);
 			
-			entity.position.x = stream.readFloat();
-			entity.position.y = stream.readFloat();
-			entity.position.z = stream.readFloat();
+			Vector3 oldPos = entity.position;
+			Vector3 oldDir = entity.direction;
 			
-			entity.direction.x = stream.readFloat();
-			entity.direction.y = stream.readFloat();
-			entity.direction.z = stream.readFloat();
-			
-			Vector3 position = (Vector3)entity.getDefinedProperty("position");
-			Vector3 direction = (Vector3)entity.getDefinedProperty("direction");
-			Vector3 old_position = new Vector3(position.x, position.y, position.z);
-			Vector3 old_direction = new Vector3(direction.x, direction.y, direction.z);
-			
-			position.x = entity.position.x;
-			position.y = entity.position.y;
-			position.z = entity.position.z;
-			
-			direction.x = entity.direction.x;
-			direction.y = entity.direction.y;
-			direction.z = entity.direction.z;
-			
-			entity.setDefinedProperty("position", position);
-			entity.setDefinedProperty("direction", direction);
-			
-			entity._entityLastLocalPos = entity.position;
-			entity._entityLastLocalDir = entity.direction;
-			
-			entity.set_direction(old_direction);
-			entity.set_position(old_position);
+            if (entity.parent != null)
+            {
+                // 位置、朝向强制设置传递过来的是世界坐标，因此要进行本地坐标转换
+				Vector3 localPos = entity.parent.positionWorldToLocal(newPos);
+				Vector3 localDir = entity.parent.directionWorldToLocal(newDir);
+                entity.localPosition = localPos;
+                entity.localDirection = localDir;
+            }
+            else
+            {
+				entity.localPosition = newPos;
+				entity.localDirection = newDir;
+            }
+
+			entity.setPositionFromServer(newPos);
+			entity.setDirectionFromServer(newDir);
+
+			entity._entityLastLocalPos = newPos;
+			entity._entityLastLocalDir = newDir;
+
+			entity.set_direction(oldDir);
+			entity.set_position(oldPos);
 		}
 		
 		public void Client_onUpdateData_ypr(MemoryStream stream)
@@ -2600,50 +2655,123 @@
 			}
 		
 			bool changeDirection = false;
+			Vector3 newDir = KBEMath.Unity2KBEngineDirection(entity.localDirection);
 			
 			if(roll != KBEDATATYPE_BASE.KBE_FLT_MAX)
 			{
 				changeDirection = true;
-				entity.direction.x = KBEMath.int82angle((SByte)roll, false) * 360 / ((float)System.Math.PI * 2);
+				newDir.x = KBEMath.int82angle((SByte)roll, false);
 			}
 
 			if(pitch != KBEDATATYPE_BASE.KBE_FLT_MAX)
 			{
 				changeDirection = true;
-				entity.direction.y = KBEMath.int82angle((SByte)pitch, false) * 360 / ((float)System.Math.PI * 2);
+                newDir.y = KBEMath.int82angle((SByte)pitch, false);
 			}
 			
 			if(yaw != KBEDATATYPE_BASE.KBE_FLT_MAX)
 			{
 				changeDirection = true;
-				entity.direction.z = KBEMath.int82angle((SByte)yaw, false) * 360 / ((float)System.Math.PI * 2);
+				newDir.z = KBEMath.int82angle((SByte)yaw, false);
 			}
-			
-			bool done = false;
+
+			newDir = KBEMath.KBEngine2UnityDirection(newDir);
+
+            // 如果有父类则与父类进行计算得到世界朝向
+			if (changeDirection)
+			{
+				// 服务器总是更新本地朝向，因此不管是否有父对象，都先更新本地朝向
+				entity.localDirection = newDir;
+
+				if (entity.parentID > 0)
+				{
+					if (entity.parent != null)
+						newDir = entity.parent.directionLocalToWorld(newDir);
+					else
+						changeDirection = false;  // 有parentID但找不到parent entity了则直接放弃
+				}
+			}
+
+            bool done = false;
 			if(changeDirection == true)
 			{
-				Event.fireOut("set_direction", new object[]{entity});
+				entity.setDirectionFromServer(newDir);
+                Event.fireOut("set_direction", new object[]{entity});
 				done = true;
 			}
-			
-			if(!KBEMath.almostEqual(x + y + z, 0f, 0.000001f))
+
+            bool positionChanged = !KBEMath.almostEqual(x + y + z, 0f, 0.000001f);
+
+			Vector3 pos = Vector3.zero;
+
+            if (positionChanged)
+            {
+				if (entity.parentID > 0)
+                {
+					entity.localPosition.Set(x, y, z);
+                    if (entity.parent != null)
+                        // 如果有父对象则与父对象进行计算得到世界朝向
+						pos = entity.parent.positionLocalToWorld(entity.localPosition);
+                    else
+                        // 找不到父对象则直接放弃
+                        positionChanged = false;
+                }
+                else
+                {
+                    // 没有父类则以主角为中心计算世界朝向
+                    pos = new Vector3(x + _entityServerPos.x, y + _entityServerPos.y, z + _entityServerPos.z);
+					entity.localPosition = pos;
+                }
+			}
+
+            if (positionChanged)
 			{
-				Vector3 pos = new Vector3(x + _entityServerPos.x, y + _entityServerPos.y, z + _entityServerPos.z);
-				
-				entity.position = pos;
+				entity.setPositionFromServer(pos);
 				done = true;
 				Event.fireOut("updatePosition", new object[]{entity});
 			}
-			
-			if(done)
+
+			if (done)
 				entity.onUpdateVolatileData();
 		}
-		
-		/*
+
+        /// <summary>
+        /// 服务器通知客户端：某个entity的parent改变了
+        /// </summary>
+        public void Client_onParentChanged(Int32 eid, Int32 parentID)
+        {
+            Entity entity = findEntity(eid);
+            if (entity == null)
+            {
+                Dbg.WARNING_MSG("KBEngineApp::onParentChanged");
+            }
+
+            Entity ent = findEntity(eid);
+            if (ent == null)
+                return;
+
+			if (parentID <= 0)
+			{
+				ent.setParent(null);
+				return;
+			}
+
+            Entity parentEnt = findEntity(parentID);
+            if (parentEnt == null)
+            {
+                ent.parentID = parentID;
+            }
+            else
+            {
+                ent.setParent(parentEnt);
+            }
+        }
+
+        /*
 			服务端通知流数据下载开始
 			请参考API手册关于onStreamDataStarted
 		*/
-		public void Client_onStreamDataStarted(Int16 id, UInt32 datasize, string descr)
+        public void Client_onStreamDataStarted(Int16 id, UInt32 datasize, string descr)
 		{
 		}
 		
