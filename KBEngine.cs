@@ -261,7 +261,7 @@
 			if (_networkInterface != null)
 				_networkInterface.reset();
 
-			_networkInterface = new NetworkInterface2();
+			_networkInterface = new NetworkInterface();
 			
 			_spacedatas.Clear();
 		}
@@ -643,7 +643,7 @@
 				Event.fireOut("onLoginBaseapp", new object[]{});
 				
 				_networkInterface.reset();
-				_networkInterface = new NetworkInterface2();
+				_networkInterface = new NetworkInterface();
 				_networkInterface.connectTo(baseappIP, baseappPort, onConnectTo_baseapp_callback, null);
 			}
 			else
