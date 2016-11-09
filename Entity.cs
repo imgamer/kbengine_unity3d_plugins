@@ -390,9 +390,6 @@
 		{
 			//Dbg.DEBUG_MSG(className + "::set_position: " + old + " => " + v); 
 			
-			if(isPlayer())
-				KBEngineApp.app.entityServerPos(position);
-			
 			if(inWorld)
 				Event.fireOut("set_position", new object[]{this});
 		}
@@ -414,7 +411,6 @@
 		
 		public virtual void set_direction(object old)
 		{
-			
 			//Dbg.DEBUG_MSG(className + "::set_direction: " + old + " => " + v); 
 			
 			if(inWorld)
@@ -535,49 +531,24 @@
         {
         }
 
-        public void addChild(Entity ent)
+		internal void addChild(Entity ent)
         {
             children.Add(ent.id, ent);
         }
 
-        public void removeChild(Entity ent)
+		internal void removeChild(Entity ent)
         {
             children.Remove(ent.id);
         }
 
-        public Entity getChild(Int32 eid)
+		internal Entity getChild(Int32 eid)
         {
             Entity entity = null;
             children.TryGetValue(eid, out entity);
             return entity;
         }
 
-        public void parentPositionChangedNotify()
-        {
-            if (children.Count == 0)
-                return;
-
-			foreach (KeyValuePair<Int32, Entity> dic in children)
-			{
-				Entity ent = dic.Value;
-
-				// 更新世界坐标
-				ent.position = positionLocalToWorld(ent.localPosition);
-				ent.setDefinedProperty("position", ent.position);
-
-				// 设置最后更新值，以避免被控制者向服务器发送世界坐标或朝向
-				ent._entityLastLocalPos = ent.position;
-
-				// 对于玩家自已或被本机控制的entity而言，因父对象的移动而移动，
-				// 新坐标不需要通知服务器，因为每个客户端都会做同样的处理，服务器也会自行计算。
-				if (ent.isPlayer() || ent.isControlled)
-					ent._entityLastLocalPos = ent.position;
-
-				ent.onUpdateVolatileDataByParent();
-			}
-        }
-
-        public void parentDirectionChangedNotify()
+		public void parentVolatileDataUpdatedNotify(bool positionOnly)
         {
             if (children.Count == 0)
                 return;
@@ -588,24 +559,26 @@
 
 				// 父对象的朝向改变会引发子对象的世界坐标的改变
 				ent.position = positionLocalToWorld(ent.localPosition);
-				//ent.setDefinedProperty("position", ent.position);
 
 				// 设置最后更新值，以避免被控制者向服务器发送世界坐标或朝向
 				ent._entityLastLocalPos = ent.position;
 
-				// 更新世界朝向
-				ent.direction = directionLocalToWorld(ent.localDirection);
-				//ent.setDefinedProperty("direction", ent.direction);
+				if (!positionOnly)
+				{
+					// 更新世界朝向
+					ent.direction = directionLocalToWorld(ent.localDirection);
 
-				// 设置最后更新值，以避免被控制者向服务器发送世界坐标或朝向
-				ent._entityLastLocalDir = ent.direction;
+					// 设置最后更新值，以避免被控制者向服务器发送世界坐标或朝向
+					ent._entityLastLocalDir = ent.direction;
+				}
 
 				// 对于玩家自已或被本机控制的entity而言，因父对象的移动而移动，
 				// 新坐标不需要通知服务器，因为每个客户端都会做同样的处理，服务器也会自行计算。
 				if (ent.isPlayer() || ent.isControlled)
 				{
 					ent._entityLastLocalPos = ent.position;
-					ent._entityLastLocalDir = ent.direction;
+					if (!positionOnly)
+						ent._entityLastLocalDir = ent.direction;
 				}
 
 				ent.onUpdateVolatileDataByParent();
@@ -613,29 +586,48 @@
         }
 
 		/// <summary>
-		/// 内部接口，用于引擎设置entity的坐标
+		/// 内部接口，用于引擎强制设置entity的坐标
 		/// </summary>
 		/// <param name="pos"></param>
 		internal void setPositionFromServer(Vector3 pos)
 		{
-			position = pos;
-			//setDefinedProperty("position", pos);
+			Vector3 old = position;
+			position = _entityLastLocalPos = pos;
+
+			if (isPlayer())
+				KBEngineApp.app.entityServerPos(position);
+
+			if (parent != null)
+				localPosition = parent.positionWorldToLocal(position);
+			else
+				localPosition = position;
 
 			if (inWorld)
-				parentPositionChangedNotify();
+			{
+				set_position(old);
+				parentVolatileDataUpdatedNotify(true);
+			}
 		}
 
 		/// <summary>
-		/// 内部接口，用于引擎设置entity的坐标
+		/// 内部接口，用于引擎强制设置entity的朝向
 		/// </summary>
 		/// <param name="dir"></param>
 		internal void setDirectionFromServer(Vector3 dir)
 		{
-			direction = dir;
-			//setDefinedProperty("direction", dir);
+			Vector3 old = direction;
+			direction = _entityLastLocalDir = dir;
+
+			if (parent != null)
+				localDirection = parent.directionWorldToLocal(direction);
+			else
+				localDirection = direction;
 
 			if (inWorld)
-				parentDirectionChangedNotify();
+			{
+				set_direction(old);
+				parentVolatileDataUpdatedNotify(false);
+			}
 		}
 
 		/// <summary>
@@ -644,29 +636,35 @@
 		/// <param name="pos"></param>
 		public void updateVolatileDataForServer(Vector3 pos, Vector3 dir)
 		{
+			bool posChanged = false;
+			bool dirChanged = false;
+
 			if (Vector3.Distance(position, pos) > 0.001f)
 			{
-
 				position = pos;
+				posChanged = true;
 
 				if (parent != null)
-					localPosition = parent.positionWorldToLocal(pos);
+					localPosition = parent.positionWorldToLocal(position);
 				else
 					localPosition = position;
 			}
 
 			if (Vector3.Distance(direction, dir) > 0.001f)
 			{
-
 				direction = dir;
+				dirChanged = true;
 
 				if (parent != null)
 					localDirection = parent.directionWorldToLocal(direction);
 				else
-					localDirection = dir;
+					localDirection = direction;
 			}
 
-			onUpdateVolatileDataByParent();
+			if (dirChanged)
+				parentVolatileDataUpdatedNotify(false);  // 父的朝向改变会同时计算子对象的朝向和位置，所以需要先判断
+			else if (posChanged)
+				parentVolatileDataUpdatedNotify(true);
 		}
 
 

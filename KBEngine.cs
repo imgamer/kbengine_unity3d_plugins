@@ -1648,37 +1648,29 @@
                 if (propertydata.name == "position")
                 {
 					Vector3 newPos = (Vector3)val;
-					if (entity.parent != null)
-						entity.localPosition = entity.parent.positionWorldToLocal(newPos);
-					else
-						entity.localPosition = newPos;
-					entity._entityLastLocalPos = newPos;
 					entity.setPositionFromServer(newPos);
                 }
-                else if (propertydata.name == "direction")
-                {
+				else if (propertydata.name == "direction")
+				{
 					Vector3 newDir = KBEMath.KBEngine2UnityDirection((Vector3)val);
-					if (entity.parent != null)
-						entity.localDirection = entity.parent.directionWorldToLocal(newDir);
-					else
-						entity.localDirection = newDir;
-					entity._entityLastLocalDir = newDir;
 					entity.setDirectionFromServer(newDir);
-                }
+				}
 				else
+				{
 					entity.setDefinedPropertyByUType(utype, val);
 
-                if (setmethod != null)
-				{
-					if(propertydata.isBase())
+					if (setmethod != null)
 					{
-						if(entity.inited)
-							setmethod.Invoke(entity, new object[]{oldval});
-					}
-					else
-					{
-						if(entity.inWorld)
-							setmethod.Invoke(entity, new object[]{oldval});
+						if (propertydata.isBase())
+						{
+							if (entity.inited)
+								setmethod.Invoke(entity, new object[] { oldval });
+						}
+						else
+						{
+							if (entity.inWorld)
+								setmethod.Invoke(entity, new object[] { oldval });
+						}
 					}
 				}
 			}
@@ -1811,11 +1803,6 @@
 				entityMessage.reclaimObject();
 				
 				entity.isOnGround = isOnGround > 0;
-
-				// @TODO(penghuawei): 理论上，下面两行应该不用执行，
-				// 因为前面的Client_onUpdatePropertys()必然会触发
-				//entity.set_direction(entity.direction);
-				//entity.set_position(entity.position);
 
                 if (parentID > 0)
                 {
@@ -2258,41 +2245,26 @@
 		*/
 		public void Client_onUpdateBasePos(float x, float y, float z)
 		{
-			_entityServerPos.x = x;
-			_entityServerPos.y = y;
-			_entityServerPos.z = z;
+			_entityServerPos.Set(x, y, z);
 
 			var entity = player();
 			if (entity != null && entity.isControlled)
 			{
+				entity.position = _entityServerPos;
 				if (entity.parent != null)
 					entity.localPosition = entity.parent.positionWorldToLocal(_entityServerPos);
 				else
 					entity.localPosition = _entityServerPos;
 
-				entity.setPositionFromServer(_entityServerPos);
 				Event.fireOut("updatePosition", new object[]{entity});
 				entity.onUpdateVolatileData();
+				entity.parentVolatileDataUpdatedNotify(true);
 			}
 		}
 		
 		public void Client_onUpdateBasePosXZ(float x, float z)
 		{
-			_entityServerPos.x = x;
-			_entityServerPos.z = z;
-
-			var entity = player();
-			if (entity != null && entity.isControlled)
-			{
-				if (entity.parent != null)
-					entity.localPosition = entity.parent.positionWorldToLocal(_entityServerPos);
-				else
-					entity.localPosition = _entityServerPos;
-
-				entity.setPositionFromServer(_entityServerPos);
-				Event.fireOut("updatePosition", new object[]{entity});
-				entity.onUpdateVolatileData();
-			}
+			Client_onUpdateBasePos(x, _entityServerPos.y, z);
 		}
 
 		public void Client_onUpdateBaseDir(MemoryStream stream)
@@ -2305,15 +2277,15 @@
 			var entity = player();
 			if (entity != null && entity.isControlled)
 			{
-				Vector3 dir = KBEMath.KBEngine2UnityDirection(roll, pitch, yaw);
+				entity.direction = KBEMath.KBEngine2UnityDirection(roll, pitch, yaw);
 				if (entity.parent != null)
-					entity.localDirection = entity.parent.directionWorldToLocal(dir);
+					entity.localDirection = entity.parent.directionWorldToLocal(entity.direction);
 				else
-					entity.localDirection = dir;
+					entity.localDirection = entity.direction;
 
-				entity.setDirectionFromServer(dir);
 				Event.fireOut("set_direction", new object[]{entity});
 				entity.onUpdateVolatileData();
+				entity.parentVolatileDataUpdatedNotify(false);
 			}
 		}
 
@@ -2354,31 +2326,8 @@
 			newDir.z = stream.readFloat();
 			newDir = KBEMath.KBEngine2UnityDirection(newDir);
 			
-			Vector3 oldPos = entity.position;
-			Vector3 oldDir = entity.direction;
-			
-            if (entity.parent != null)
-            {
-                // 位置、朝向强制设置传递过来的是世界坐标，因此要进行本地坐标转换
-				Vector3 localPos = entity.parent.positionWorldToLocal(newPos);
-				Vector3 localDir = entity.parent.directionWorldToLocal(newDir);
-                entity.localPosition = localPos;
-                entity.localDirection = localDir;
-            }
-            else
-            {
-				entity.localPosition = newPos;
-				entity.localDirection = newDir;
-            }
-
 			entity.setPositionFromServer(newPos);
 			entity.setDirectionFromServer(newDir);
-
-			entity._entityLastLocalPos = newPos;
-			entity._entityLastLocalDir = newDir;
-
-			entity.set_direction(oldDir);
-			entity.set_position(oldPos);
 		}
 		
 		public void Client_onUpdateData_ypr(MemoryStream stream)
@@ -2695,7 +2644,7 @@
             bool done = false;
 			if(changeDirection == true)
 			{
-				entity.setDirectionFromServer(newDir);
+				entity.direction = newDir;
                 Event.fireOut("set_direction", new object[]{entity});
 				done = true;
 			}
@@ -2726,13 +2675,16 @@
 
             if (positionChanged)
 			{
-				entity.setPositionFromServer(pos);
+				entity.position = pos;
 				done = true;
 				Event.fireOut("updatePosition", new object[]{entity});
 			}
 
 			if (done)
+			{
 				entity.onUpdateVolatileData();
+				entity.parentVolatileDataUpdatedNotify(!changeDirection);
+			}
 		}
 
         /// <summary>
@@ -2740,31 +2692,24 @@
         /// </summary>
         public void Client_onParentChanged(Int32 eid, Int32 parentID)
         {
-            Entity entity = findEntity(eid);
-            if (entity == null)
-            {
-                Dbg.WARNING_MSG("KBEngineApp::onParentChanged");
-            }
-
             Entity ent = findEntity(eid);
-            if (ent == null)
-                return;
+			if (ent == null)
+			{
+				Dbg.ERROR_MSG("Client_onParentChanged: invalid entity id " + eid + ", parent " + parentID);
+				return;
+			}
 
 			if (parentID <= 0)
 			{
 				ent.setParent(null);
 				return;
 			}
-
+			
             Entity parentEnt = findEntity(parentID);
             if (parentEnt == null)
-            {
                 ent.parentID = parentID;
-            }
             else
-            {
                 ent.setParent(parentEnt);
-            }
         }
 
         /*
