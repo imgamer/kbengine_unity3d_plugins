@@ -433,58 +433,22 @@
         /** 本地坐标与世界坐标互转 */
         public Vector3 positionLocalToWorld(Vector3 localPos)
         {
-            Quaternion p_local = new Quaternion(localPos.x, localPos.y, localPos.z, 0);
-      
-			Quaternion qx_r = Quaternion.AngleAxis(direction.x, new Vector3(1, 0, 0));
-			Quaternion qy_r = Quaternion.AngleAxis(direction.y, new Vector3(0, 1, 0));
-			Quaternion qz_r = Quaternion.AngleAxis(direction.z, new Vector3(0, 0, 1));
-
-            Quaternion q_r = qy_r * qx_r * qz_r; //欧拉旋转的旋转顺序是Z、X、Y，不同的旋转顺序方向，需要在这里修改，Z是最上层,qy*qx*qz，从右向左
-            Quaternion q_rr = Quaternion.Inverse(q_r); //逆运算
-            Quaternion p = q_r * p_local * q_rr; //p经过q_r四元数旋转得到p0，所以p=q*p0*q^-1
-
-            return new Vector3(p.x + position.x, p.y + position.y, p.z + position.z);
+			return KBEMath.positionLocalToWorld(position, direction, localPos);
         }
 
         public Vector3 positionWorldToLocal(Vector3 worldPos)
         {
-			Quaternion qx_r = Quaternion.AngleAxis(direction.x, new Vector3(1, 0, 0));
-			Quaternion qy_r = Quaternion.AngleAxis(direction.y, new Vector3(0, 1, 0));
-			Quaternion qz_r = Quaternion.AngleAxis(direction.z, new Vector3(0, 0, 1));
-
-            Quaternion q_r = qy_r * qx_r * qz_r; //欧拉旋转的旋转顺序是Z、X、Y，不同的旋转顺序方向，需要在这里修改，Z是最上层,qy*qx*qz，从右向左
-            Quaternion q_rr = Quaternion.Inverse(q_r); //逆运算
-
-            Vector3 g_pos = new Vector3(worldPos.x - position.x, worldPos.y - position.y, worldPos.z - position.z);
-            Quaternion g_q = new Quaternion(g_pos.x, g_pos.y, g_pos.z, 0);
-            Quaternion p_local = q_rr * g_q * q_r;
-
-            return new Vector3(p_local.x, p_local.y, p_local.z);
+			return KBEMath.positionWorldToLocal(position, direction, worldPos);
         }
 
         public Vector3 directionLocalToWorld(Vector3 localDir)
         {
-
-			Quaternion q_parentdir = Quaternion.Euler(direction);
-			Quaternion q_childdir = Quaternion.Euler(localDir);
-
-            Quaternion wr = q_parentdir * q_childdir;
-            Vector3 result = wr.eulerAngles;
-
-            return result;
+			return KBEMath.directionLocalToWorld(direction, localDir);
         }
 
         public Vector3 directionWorldToLocal(Vector3 worldDir)
         {
-			Quaternion q_parentdir = Quaternion.Euler(direction);
-			Quaternion q_childworlddir = Quaternion.Euler(worldDir);
-
-            Quaternion pr_r = Quaternion.Inverse(q_parentdir); //逆运算
-            Quaternion lr = pr_r * q_childworlddir;
-
-            Vector3 result = lr.eulerAngles;
-
-			return result;
+			return KBEMath.directionWorldToLocal(direction, worldDir);
         }
 
         public void setParent(Entity ent)
@@ -548,7 +512,7 @@
             return entity;
         }
 
-		public void parentVolatileDataUpdatedNotify(bool positionOnly)
+		public void syncParentVolatileDataToChildren(bool positionOnly)
         {
             if (children.Count == 0)
                 return;
@@ -602,11 +566,8 @@
 			else
 				localPosition = position;
 
-			if (inWorld)
-			{
-				set_position(old);
-				parentVolatileDataUpdatedNotify(true);
-			}
+			set_position(old);
+			syncParentVolatileDataToChildren(true);
 		}
 
 		/// <summary>
@@ -623,18 +584,23 @@
 			else
 				localDirection = direction;
 
-			if (inWorld)
-			{
-				set_direction(old);
-				parentVolatileDataUpdatedNotify(false);
-			}
+			set_direction(old);
+			syncParentVolatileDataToChildren(false);
+		}
+
+		/// <summary>
+		/// 用于同步GameObject的坐标到Entity——以保证Entity与GameObject的一致性
+		/// </summary>
+		public void updateVolatileDataToEntity(Vector3 pos, Vector3 dir)
+		{
+			position = pos;
+			direction = dir;
 		}
 
 		/// <summary>
 		/// 用于被控制者（如角色）定期向服务器更新其世界坐标和世界朝向
 		/// </summary>
-		/// <param name="pos"></param>
-		public void updateVolatileDataForServer(Vector3 pos, Vector3 dir)
+		public void updateVolatileDataToServer(Vector3 pos, Vector3 dir)
 		{
 			bool posChanged = false;
 			bool dirChanged = false;
@@ -662,12 +628,10 @@
 			}
 
 			if (dirChanged)
-				parentVolatileDataUpdatedNotify(false);  // 父的朝向改变会同时计算子对象的朝向和位置，所以需要先判断
+				syncParentVolatileDataToChildren(false);  // 父的朝向改变会同时计算子对象的朝向和位置，所以需要先判断
 			else if (posChanged)
-				parentVolatileDataUpdatedNotify(true);
+				syncParentVolatileDataToChildren(true);
 		}
-
-
 
     }
 

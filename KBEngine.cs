@@ -322,10 +322,8 @@
 
 			entities[eid] = entity;
 
-			Vector3 newDir = new Vector3(direction.z, direction.x, direction.y);
-
-			entity.setPositionFromServer(position);
-			entity.setDirectionFromServer(newDir);
+			entity.position = position;
+			entity.direction = direction;
 
 			entity.isClientOnly = true;
 			entity.isOnGround = true;
@@ -2258,7 +2256,7 @@
 
 				Event.fireOut("updatePosition", new object[]{entity});
 				entity.onUpdateVolatileData();
-				entity.parentVolatileDataUpdatedNotify(true);
+				entity.syncParentVolatileDataToChildren(true);
 			}
 		}
 		
@@ -2285,7 +2283,7 @@
 
 				Event.fireOut("set_direction", new object[]{entity});
 				entity.onUpdateVolatileData();
-				entity.parentVolatileDataUpdatedNotify(false);
+				entity.syncParentVolatileDataToChildren(false);
 			}
 		}
 
@@ -2683,7 +2681,7 @@
 			if (done)
 			{
 				entity.onUpdateVolatileData();
-				entity.parentVolatileDataUpdatedNotify(!changeDirection);
+				entity.syncParentVolatileDataToChildren(!changeDirection);
 			}
 		}
 
