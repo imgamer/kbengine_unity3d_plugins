@@ -2253,10 +2253,10 @@
 					entity.localPosition = entity.parent.positionWorldToLocal(_entityServerPos);
 				else
 					entity.localPosition = _entityServerPos;
+				entity.syncVolatileDataToChildren(true);
 
 				Event.fireOut("updatePosition", new object[]{entity});
 				entity.onUpdateVolatileData();
-				entity.syncParentVolatileDataToChildren(true);
 			}
 		}
 		
@@ -2280,10 +2280,10 @@
 					entity.localDirection = entity.parent.directionWorldToLocal(entity.direction);
 				else
 					entity.localDirection = entity.direction;
+				entity.syncVolatileDataToChildren(false);
 
 				Event.fireOut("set_direction", new object[]{entity});
 				entity.onUpdateVolatileData();
-				entity.syncParentVolatileDataToChildren(false);
 			}
 		}
 
@@ -2680,8 +2680,8 @@
 
 			if (done)
 			{
+				entity.syncVolatileDataToChildren(!changeDirection);
 				entity.onUpdateVolatileData();
-				entity.syncParentVolatileDataToChildren(!changeDirection);
 			}
 		}
 

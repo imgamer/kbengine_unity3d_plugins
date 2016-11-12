@@ -24,7 +24,7 @@
 		
 		public bool isOnGround = true;
 		
-		public object renderObj = null;
+		public GameObject renderObj = null;
 		
 		public Mailbox baseMailbox = null;
 		public Mailbox cellMailbox = null;
@@ -431,24 +431,37 @@
 		}
 
         /** 本地坐标与世界坐标互转 */
-        public Vector3 positionLocalToWorld(Vector3 localPos)
+		public virtual Vector3 positionLocalToWorld(Vector3 localPos)
         {
-			return KBEMath.positionLocalToWorld(position, direction, localPos);
+			//return KBEMath.positionLocalToWorld(position, direction, localPos);
+			if (renderObj != null)
+				return KBEMath.positionLocalToWorld(renderObj.transform.position, renderObj.transform.eulerAngles, localPos);
+			else
+				return KBEMath.positionLocalToWorld(position, direction, localPos);
         }
 
-        public Vector3 positionWorldToLocal(Vector3 worldPos)
+		public virtual Vector3 positionWorldToLocal(Vector3 worldPos)
         {
-			return KBEMath.positionWorldToLocal(position, direction, worldPos);
+			if (renderObj != null)
+				return KBEMath.positionWorldToLocal(renderObj.transform.position, renderObj.transform.eulerAngles, worldPos);
+			else
+				return KBEMath.positionWorldToLocal(position, direction, worldPos);
         }
 
-        public Vector3 directionLocalToWorld(Vector3 localDir)
+		public virtual Vector3 directionLocalToWorld(Vector3 localDir)
         {
-			return KBEMath.directionLocalToWorld(direction, localDir);
+			if (renderObj != null)
+				return KBEMath.directionLocalToWorld(renderObj.transform.eulerAngles, localDir);
+			else
+				return KBEMath.directionLocalToWorld(direction, localDir);
         }
 
-        public Vector3 directionWorldToLocal(Vector3 worldDir)
+		public virtual Vector3 directionWorldToLocal(Vector3 worldDir)
         {
-			return KBEMath.directionWorldToLocal(direction, worldDir);
+			if (renderObj != null)
+				return KBEMath.directionWorldToLocal(renderObj.transform.eulerAngles, worldDir);
+			else
+				return KBEMath.directionWorldToLocal(direction, worldDir);
         }
 
         public void setParent(Entity ent)
@@ -512,7 +525,7 @@
             return entity;
         }
 
-		public void syncParentVolatileDataToChildren(bool positionOnly)
+		public void syncVolatileDataToChildren(bool positionOnly)
         {
             if (children.Count == 0)
                 return;
@@ -530,7 +543,7 @@
 				if (!positionOnly)
 				{
 					// 更新世界朝向
-					ent.direction = directionLocalToWorld(ent.localDirection);
+					ent.direction = directionLocalToWorld(ent.localPosition);
 
 					// 设置最后更新值，以避免被控制者向服务器发送世界坐标或朝向
 					ent._entityLastLocalDir = ent.direction;
@@ -544,10 +557,21 @@
 					if (!positionOnly)
 						ent._entityLastLocalDir = ent.direction;
 				}
-
-				ent.onUpdateVolatileDataByParent();
 			}
         }
+
+		/// <summary>
+		/// 通知子对象更新自己的易变数据——即坐标和朝向。
+		/// 此方法有必要时可以由外部逻辑调用。
+		/// </summary>
+		public void syncAndNotifyVolatileDataToChildren(bool positionOnly)
+		{
+			syncVolatileDataToChildren(positionOnly);
+			foreach (KeyValuePair<Int32, Entity> dic in children)
+			{
+				dic.Value.onUpdateVolatileDataByParent();
+			}
+		}
 
 		/// <summary>
 		/// 内部接口，用于引擎强制设置entity的坐标
@@ -566,8 +590,8 @@
 			else
 				localPosition = position;
 
+			syncVolatileDataToChildren(true);
 			set_position(old);
-			syncParentVolatileDataToChildren(true);
 		}
 
 		/// <summary>
@@ -584,17 +608,8 @@
 			else
 				localDirection = direction;
 
+			syncVolatileDataToChildren(false);
 			set_direction(old);
-			syncParentVolatileDataToChildren(false);
-		}
-
-		/// <summary>
-		/// 用于同步GameObject的坐标到Entity——以保证Entity与GameObject的一致性
-		/// </summary>
-		public void updateVolatileDataToEntity(Vector3 pos, Vector3 dir)
-		{
-			position = pos;
-			direction = dir;
 		}
 
 		/// <summary>
@@ -628,9 +643,9 @@
 			}
 
 			if (dirChanged)
-				syncParentVolatileDataToChildren(false);  // 父的朝向改变会同时计算子对象的朝向和位置，所以需要先判断
+				syncAndNotifyVolatileDataToChildren(false);  // 父的朝向改变会同时计算子对象的朝向和位置，所以需要先判断
 			else if (posChanged)
-				syncParentVolatileDataToChildren(true);
+				syncAndNotifyVolatileDataToChildren(true);
 		}
 
     }
