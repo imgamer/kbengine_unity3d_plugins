@@ -2336,7 +2336,7 @@
 			SByte p = stream.readInt8();
 			SByte r = stream.readInt8();
 			
-			_updateVolatileData(eid, 0.0f, 0.0f, 0.0f, y, p, r, -1);
+			_updateVolatileData(eid, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, y, p, r, -1);
 		}
 		
 		public void Client_onUpdateData_yp(MemoryStream stream)
@@ -2346,7 +2346,7 @@
 			SByte y = stream.readInt8();
 			SByte p = stream.readInt8();
 			
-			_updateVolatileData(eid, 0.0f, 0.0f, 0.0f, y, p, KBEDATATYPE_BASE.KBE_FLT_MAX, -1);
+			_updateVolatileData(eid, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, y, p, KBEDATATYPE_BASE.KBE_FLT_MAX, -1);
 		}
 		
 		public void Client_onUpdateData_yr(MemoryStream stream)
@@ -2356,7 +2356,7 @@
 			SByte y = stream.readInt8();
 			SByte r = stream.readInt8();
 			
-			_updateVolatileData(eid, 0.0f, 0.0f, 0.0f, y, KBEDATATYPE_BASE.KBE_FLT_MAX, r, -1);
+			_updateVolatileData(eid, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, y, KBEDATATYPE_BASE.KBE_FLT_MAX, r, -1);
 		}
 		
 		public void Client_onUpdateData_pr(MemoryStream stream)
@@ -2366,7 +2366,7 @@
 			SByte p = stream.readInt8();
 			SByte r = stream.readInt8();
 			
-			_updateVolatileData(eid, 0.0f, 0.0f, 0.0f, KBEDATATYPE_BASE.KBE_FLT_MAX, p, r, -1);
+			_updateVolatileData(eid, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, p, r, -1);
 		}
 		
 		public void Client_onUpdateData_y(MemoryStream stream)
@@ -2375,7 +2375,7 @@
 			
 			SByte y = stream.readInt8();
 			
-			_updateVolatileData(eid, 0.0f, 0.0f, 0.0f, y, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, -1);
+			_updateVolatileData(eid, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, y, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, -1);
 		}
 		
 		public void Client_onUpdateData_p(MemoryStream stream)
@@ -2384,7 +2384,7 @@
 			
 			SByte p = stream.readInt8();
 			
-			_updateVolatileData(eid, 0.0f, 0.0f, 0.0f, KBEDATATYPE_BASE.KBE_FLT_MAX, p, KBEDATATYPE_BASE.KBE_FLT_MAX, -1);
+			_updateVolatileData(eid, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, p, KBEDATATYPE_BASE.KBE_FLT_MAX, -1);
 		}
 		
 		public void Client_onUpdateData_r(MemoryStream stream)
@@ -2393,7 +2393,7 @@
 			
 			SByte r = stream.readInt8();
 			
-			_updateVolatileData(eid, 0.0f, 0.0f, 0.0f, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, r, -1);
+			_updateVolatileData(eid, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, r, -1);
 		}
 		
 		public void Client_onUpdateData_xz(MemoryStream stream)
@@ -2402,7 +2402,7 @@
 			
 			Vector2 xz = stream.readPackXZ();
 			
-			_updateVolatileData(eid, xz[0], 0.0f, xz[1], KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, 1);
+			_updateVolatileData(eid, xz[0], KBEDATATYPE_BASE.KBE_FLT_MAX, xz[1], KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, 1);
 		}
 		
 		public void Client_onUpdateData_xz_ypr(MemoryStream stream)
@@ -2415,7 +2415,7 @@
 			SByte p = stream.readInt8();
 			SByte r = stream.readInt8();
 			
-			_updateVolatileData(eid, xz[0], 0.0f, xz[1], y, p, r, 1);
+			_updateVolatileData(eid, xz[0], KBEDATATYPE_BASE.KBE_FLT_MAX, xz[1], y, p, r, 1);
 		}
 		
 		public void Client_onUpdateData_xz_yp(MemoryStream stream)
@@ -2427,7 +2427,7 @@
 			SByte y = stream.readInt8();
 			SByte p = stream.readInt8();
 			
-			_updateVolatileData(eid, xz[0], 0.0f, xz[1], y, p, KBEDATATYPE_BASE.KBE_FLT_MAX, 1);
+			_updateVolatileData(eid, xz[0], KBEDATATYPE_BASE.KBE_FLT_MAX, xz[1], y, p, KBEDATATYPE_BASE.KBE_FLT_MAX, 1);
 		}
 		
 		public void Client_onUpdateData_xz_yr(MemoryStream stream)
@@ -2439,7 +2439,7 @@
 			SByte y = stream.readInt8();
 			SByte r = stream.readInt8();
 			
-			_updateVolatileData(eid, xz[0], 0.0f, xz[1], y, KBEDATATYPE_BASE.KBE_FLT_MAX, r, 1);
+			_updateVolatileData(eid, xz[0], KBEDATATYPE_BASE.KBE_FLT_MAX, xz[1], y, KBEDATATYPE_BASE.KBE_FLT_MAX, r, 1);
 		}
 		
 		public void Client_onUpdateData_xz_pr(MemoryStream stream)
@@ -2451,7 +2451,7 @@
 			SByte p = stream.readInt8();
 			SByte r = stream.readInt8();
 			
-			_updateVolatileData(eid, xz[0], 0.0f, xz[1], KBEDATATYPE_BASE.KBE_FLT_MAX, p, r, 1);
+			_updateVolatileData(eid, xz[0], KBEDATATYPE_BASE.KBE_FLT_MAX, xz[1], KBEDATATYPE_BASE.KBE_FLT_MAX, p, r, 1);
 		}
 		
 		public void Client_onUpdateData_xz_y(MemoryStream stream)
@@ -2459,7 +2459,7 @@
 			Int32 eid = getAoiEntityIDFromStream(stream);
 			Vector2 xz = stream.readPackXZ();
 			SByte yaw = stream.readInt8();
-			_updateVolatileData(eid, xz[0], 0.0f, xz[1], yaw, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, 1);
+			_updateVolatileData(eid, xz[0], KBEDATATYPE_BASE.KBE_FLT_MAX, xz[1], yaw, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, 1);
 		}
 		
 		public void Client_onUpdateData_xz_p(MemoryStream stream)
@@ -2470,7 +2470,7 @@
 	
 			SByte p = stream.readInt8();
 			
-			_updateVolatileData(eid, xz[0], 0.0f, xz[1], KBEDATATYPE_BASE.KBE_FLT_MAX, p, KBEDATATYPE_BASE.KBE_FLT_MAX, 1);
+			_updateVolatileData(eid, xz[0], KBEDATATYPE_BASE.KBE_FLT_MAX, xz[1], KBEDATATYPE_BASE.KBE_FLT_MAX, p, KBEDATATYPE_BASE.KBE_FLT_MAX, 1);
 		}
 		
 		public void Client_onUpdateData_xz_r(MemoryStream stream)
@@ -2481,7 +2481,7 @@
 	
 			SByte r = stream.readInt8();
 			
-			_updateVolatileData(eid, xz[0], 0.0f, xz[1], KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, r, 1);
+			_updateVolatileData(eid, xz[0], KBEDATATYPE_BASE.KBE_FLT_MAX, xz[1], KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, r, 1);
 		}
 		
 		public void Client_onUpdateData_xyz(MemoryStream stream)
@@ -2647,9 +2647,12 @@
 				done = true;
 			}
 
-            bool positionChanged = !KBEMath.almostEqual(x + y + z, 0f, 0.000001f);
+            bool positionChanged = x != KBEDATATYPE_BASE.KBE_FLT_MAX || y != KBEDATATYPE_BASE.KBE_FLT_MAX || z != KBEDATATYPE_BASE.KBE_FLT_MAX;
+            if (x == KBEDATATYPE_BASE.KBE_FLT_MAX) x = 0.0f;
+            if (y == KBEDATATYPE_BASE.KBE_FLT_MAX) y = 0.0f;
+            if (z == KBEDATATYPE_BASE.KBE_FLT_MAX) z = 0.0f;
 
-			Vector3 pos = Vector3.zero;
+            Vector3 pos = Vector3.zero;
 
             if (positionChanged)
             {
