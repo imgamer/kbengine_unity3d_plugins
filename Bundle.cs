@@ -12,7 +12,7 @@
 	*/
 	public class Bundle : ObjectPool<Bundle>
     {
-		public MemoryStream stream = MemoryStream.createObject();
+		public MemoryStream stream = new MemoryStream();
 		public List<MemoryStream> streamList = new List<MemoryStream>();
 		public int numMessage = 0;
 		public int messageLength = 0;
@@ -21,6 +21,25 @@
 		
 		public Bundle()
 		{
+		}
+
+		public void clear()
+		{
+			stream = MemoryStream.createObject();
+			streamList = new List<MemoryStream>();
+			numMessage = 0;
+			messageLength = 0;
+			msgtype = null;
+			_curMsgStreamIndex = 0;
+		}
+
+		/// <summary>
+		/// 把自己放回缓冲池
+		/// </summary>
+		public void reclaimObject()
+		{
+			clear();
+			reclaimObject(this);
 		}
 		
 		public void newMessage(Message mt)
@@ -82,8 +101,8 @@
 			{
 				for(int i=0; i<streamList.Count; i++)
 				{
-					stream = streamList[i];
-					networkInterface.send(stream);
+					MemoryStream tempStream = streamList[i];
+					networkInterface.send(tempStream);
 				}
 			}
 			else
@@ -96,6 +115,7 @@
 			{
 				streamList[i].reclaimObject();
 			}
+
 			streamList.Clear();
 			stream.clear();
 
