@@ -75,7 +75,7 @@
 			{
 				_socket.Close(0);
 				_socket = null;
-				Event.fireAll("onDisconnected", new object[]{});
+				Event.asyncFireAll("onDisconnected", new object[]{});
             }
 
             _socket = null;
@@ -107,7 +107,7 @@
 				Dbg.ERROR_MSG(string.Format("NetworkInterface::_onConnectionState(), connect is error! ip: {0}:{1}, err: {2}", state.connectIP, state.connectPort, state.error));
 			}
 
-			Event.fireAll("onConnectionState", new object[] { success });
+			Event.asyncFireAll("onConnectionState", new object[] { success });
 
 			if (state.connectCB != null)
 				state.connectCB(state.connectIP, state.connectPort, success, state.userData);
@@ -125,12 +125,12 @@
 				// Complete the connection.
 				state.socket.EndConnect(ar);
 
-				Event.fireIn("_onConnectionState", new object[] { state });
+				Event.asyncFireIn("_onConnectionState", new object[] { state });
 			} 
 			catch (Exception e) 
 			{
 				state.error = e.ToString();
-				Event.fireIn("_onConnectionState", new object[] { state });
+				Event.asyncFireIn("_onConnectionState", new object[] { state });
 			}
 		}
 
@@ -164,7 +164,7 @@
 
 			// Call EndInvoke to retrieve the results.
 			caller.EndInvoke(ar);
-			Event.fireIn("_onConnectionState", new object[] { state });
+			Event.asyncFireIn("_onConnectionState", new object[] { state });
 		}
 
 		public void connectTo(string ip, int port, ConnectCallback callback, object userData)

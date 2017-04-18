@@ -128,7 +128,7 @@
 						if (first > 1000)
 						{
 							Dbg.ERROR_MSG("PacketReceiver::_asyncReceive(): no space!");
-							Event.fireIn("_closeNetwork", new object[] { _networkInterface });
+							Event.asyncFireIn("_closeNetwork", new object[] { _networkInterface });
 							return;
 						}
 
@@ -148,7 +148,7 @@
 				catch (SocketException se)
 				{
 					Dbg.ERROR_MSG(string.Format("PacketReceiver::_asyncReceive(): receive error, disconnect from '{0}'! error = '{1}'", socket.RemoteEndPoint, se));
-					Event.fireIn("_closeNetwork", new object[] { _networkInterface });
+					Event.asyncFireIn("_closeNetwork", new object[] { _networkInterface });
 					return;
 				}
 
@@ -160,7 +160,7 @@
 				else
 				{
 					Dbg.WARNING_MSG(string.Format("PacketReceiver::_asyncReceive(): receive 0 bytes, disconnect from '{0}'!", socket.RemoteEndPoint));
-					Event.fireIn("_closeNetwork", new object[] { _networkInterface });
+					Event.asyncFireIn("_closeNetwork", new object[] { _networkInterface });
 					return;
 				}
 			}

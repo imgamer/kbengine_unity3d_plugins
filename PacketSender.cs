@@ -149,7 +149,7 @@
 				catch (SocketException se)
 				{
 					Dbg.ERROR_MSG(string.Format("PacketSender::_asyncSend(): send data error, disconnect from '{0}'! error = '{1}'", socket.RemoteEndPoint, se));
-					Event.fireIn("_closeNetwork", new object[] { _networkInterface });
+					Event.asyncFireIn("_closeNetwork", new object[] { _networkInterface });
 					return;
 				}
 
