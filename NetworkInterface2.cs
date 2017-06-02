@@ -323,14 +323,14 @@ namespace KBEngine
 					{
 						Dbg.ERROR_MSG(string.Format("connect to '{0}:{1}' fault!!! error = '{2}'", ip, port, se));
 						_state.error = se.ToString();
-						Event.asyncFireIn("_onConnectStatus", new object[] { _state });
+						Event.asyncFireIn("_onConnectionState", new object[] { _state });
 					}
 				}
 				catch (Exception e)
 				{
 					Dbg.ERROR_MSG(string.Format("connect to '{0}:{1}' fault!!! error = '{2}'", ip, port, e));
 					_state.error = e.ToString();
-					Event.asyncFireIn("_onConnectStatus", new object[] { _state });
+					Event.asyncFireIn("_onConnectionState", new object[] { _state });
 				}
 				step = 1;
 			}
@@ -351,7 +351,7 @@ namespace KBEngine
 					{
 						networkInterface._network_status = null;
 						_state.error = e.ToString();
-						Event.asyncFireIn("_onConnectStatus", new object[] { _state });
+						Event.asyncFireIn("_onConnectionState", new object[] { _state });
 						return;
 					}
 
@@ -362,7 +362,7 @@ namespace KBEngine
 						networkInterface._network_status = networkInterface._status_connected;
 
 						// 回调通知
-						Event.asyncFireIn("_onConnectStatus", new object[] { _state });
+						Event.asyncFireIn("_onConnectionState", new object[] { _state });
 					}
 				}
 			}
@@ -455,23 +455,23 @@ namespace KBEngine
 			base.close();
 		}
 
-		public void _onConnectStatus(ConnectState state)
+		public void _onConnectionState(ConnectState state)
 		{
 			KBEngine.Event.deregisterIn(this);
 			
 			bool success = (state.error == "" && valid());
 			if(success)
 			{
-				Dbg.DEBUG_MSG(string.Format("NetworkInterface::_onConnectStatus(), connect to {0} is success!", state.socket.RemoteEndPoint.ToString()));
+				Dbg.DEBUG_MSG(string.Format("NetworkInterface::_onConnectionState(), connect to {0} is success!", state.socket.RemoteEndPoint.ToString()));
 				_packetReceiver = new PacketReceiver();
 				_packetSender = new PacketSender();
 			}
 			else
 			{
-				Dbg.ERROR_MSG(string.Format("NetworkInterface::_onConnectStatus(), connect is error! ip: {0}:{1}, err: {2}", state.connectIP, state.connectPort, state.error));
+				Dbg.ERROR_MSG(string.Format("NetworkInterface::_onConnectionState(), connect is error! ip: {0}:{1}, err: {2}", state.connectIP, state.connectPort, state.error));
 			}
 
-			Event.asyncFireAll("onConnectStatus", new object[] { success });
+			Event.asyncFireAll("onConnectionState", new object[] { success });
 			
 			if (state.connectCB != null)
 				state.connectCB(state.connectIP, state.connectPort, success, state.userData);
@@ -508,7 +508,7 @@ namespace KBEngine
 			}
 
 			// 先注册一个事件回调，该事件在当前线程触发
-			Event.registerIn("_onConnectStatus", this, "_onConnectStatus");
+			Event.registerIn("_onConnectionState", this, "_onConnectionState");
 
 			_network_status = _status_connecting;
 			_status_connecting.connectTo(ip, port, callback, userData);
