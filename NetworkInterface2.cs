@@ -410,7 +410,7 @@ namespace KBEngine
 
 		~NetworkInterface2()
 		{
-			Dbg.DEBUG_MSG("NetworkInterface::~NetworkInterface(), destructed!!!");
+			Dbg.DEBUG_MSG("NetworkInterface2::~NetworkInterface2(), destructed!!!");
 			reset();
 		}
 

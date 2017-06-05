@@ -4,6 +4,7 @@ namespace KBEngine
 	using System.Net.Sockets; 
 	using System.Net;
     using System.Text.RegularExpressions;
+    using System.Threading;
 
     /*
 		网络模块
@@ -265,85 +266,109 @@ namespace KBEngine
 		
 		public class Status_Connecting : Status_Base
 		{
-			public NetworkInterface3 networkInterface;
+            Thread _worker = null;
 
-			int step;
+            public NetworkInterface3 networkInterface;
+
 			ConnectState _state = new ConnectState();
 
-			public Status_Connecting(NetworkInterface3 networkInterface_)
+            DateTime connectTime;
+            bool connecting = false;
+
+            public Status_Connecting(NetworkInterface3 networkInterface_)
 			{
 				this.networkInterface = networkInterface_;
 			}
 
-			public void connectTo(string ip, int port, ConnectCallback callback, object userData)
-			{
-				_state.connectIP = ip;
-				_state.connectPort = port;
-				_state.connectCB = callback;
-				_state.userData = userData;
-				_state.socket = networkInterface.makeDefaultSocket();
-				_state.networkInterface = networkInterface;
-				this.step = 0;
+            public void connectTo(string ip, int port, ConnectCallback callback, object userData)
+            {
+                _state.connectIP = ip;
+                _state.connectPort = port;
+                _state.connectCB = callback;
+                _state.userData = userData;
+                _state.socket = networkInterface.makeDefaultSocket();
+                _state.networkInterface = networkInterface;
 
-				Dbg.DEBUG_MSG("connect to " + ip + ":" + port + " ...");
+                _worker = new Thread(new ThreadStart(this._connecting));
+                _worker.Name = "NetWorkInterfaceThread3";
+                _worker.Start();
+
+                connectTime = DateTime.Now;
+            }
+
+            public void _connecting()
+            { 
+                Dbg.DEBUG_MSG("connect to " + _state.connectIP + ":" + _state.connectPort + " ...");
 
 				try
 				{
-					_state.socket.Connect(ip, port);
+					_state.socket.Connect(_state.connectIP, _state.connectPort);
 				}
 				catch (SocketException se)
 				{
 					if (se.SocketErrorCode == SocketError.WouldBlock)
 					{
-						step = 1;
+						// do nothing
 					}
 					else
 					{
-						Dbg.ERROR_MSG(string.Format("connect to '{0}:{1}' fault!!! error = '{2}'", ip, port, se));
+						Dbg.ERROR_MSG(string.Format("connect to '{0}:{1}' fault!!! error = '{2}'", _state.connectIP, _state.connectPort, se));
 						_state.error = se.ToString();
 						Event.asyncFireIn("_onConnectionState", new object[] { _state });
+                        return;
 					}
 				}
 				catch (Exception e)
 				{
-					Dbg.ERROR_MSG(string.Format("connect to '{0}:{1}' fault!!! error = '{2}'", ip, port, e));
+					Dbg.ERROR_MSG(string.Format("connect to '{0}:{1}' fault!!! error = '{2}'", _state.connectIP, _state.connectPort, e));
 					_state.error = e.ToString();
 					Event.asyncFireIn("_onConnectionState", new object[] { _state });
+                    return;
 				}
-				step = 1;
-			}
 
-			public virtual void process()
-			{
-				//Dbg.WARNING_MSG("Status_Connecting::process(), step = " + step);
-				if (step == 1)
-				{
-					bool result = false;
+                while (true)
+                {
+                    bool result = false;
 
-					try
-					{
-						// 每tick检查一次，所以不阻塞
-						result = networkInterface._socket.Poll(0, SelectMode.SelectWrite);
-					}
-					catch (Exception e)
-					{
-						networkInterface._network_status = null;
-						_state.error = e.ToString();
-						Event.asyncFireIn("_onConnectionState", new object[] { _state });
-						return;
-					}
+                    try
+                    {
+                        // 每tick检查一次，所以不阻塞
+                        result = _state.socket.Poll(0, SelectMode.SelectWrite);
+                    }
+                    catch (Exception e)
+                    {
+                        networkInterface._network_status = null;
+                        _state.error = e.ToString();
+                        Event.asyncFireIn("_onConnectionState", new object[] { _state });
+                        return;
+                    }
 
-					if (result)
-					{
-						step = 2;
-						// 切換到已连接状态
-						networkInterface._network_status = networkInterface._status_connected;
+                    if (result)
+                    {
+                        // 切換到已连接状态
+                        networkInterface._network_status = networkInterface._status_connected;
 
-						// 回调通知
-						Event.asyncFireIn("_onConnectionState", new object[] { _state });
-					}
-				}
-			}
+                        // 回调通知
+                        Event.asyncFireIn("_onConnectionState", new object[] { _state });
+                        return;
+                    }
+
+                    Thread.Sleep(100);  // 睡眠0.1秒
+                }
+            }
+
+            public virtual void process()
+            {
+                //Dbg.WARNING_MSG("Status_Connecting::process(), step = " + step);
+                if (_state.socket != null &&
+                    !_state.socket.Connected &&
+                    (DateTime.Now - connectTime).Seconds >= 3)
+                {
+                    Dbg.WARNING_MSG(string.Format("Status_Connecting::process(), connect to '{0}:{1}' fault!!! timeout!!!", _state.connectIP, _state.connectPort));
+                    _state.socket.Close();
+                    _state.socket = null;
+                }
+            }
 		}
 
 		public class Status_Connected : Status_Base
@@ -358,7 +383,10 @@ namespace KBEngine
 
 			public virtual void process()
 			{
-				if (networkInterface._packetReceiver != null)
+                if (!networkInterface.valid())
+                    return;
+
+                if (networkInterface._packetReceiver != null)
 					networkInterface._packetReceiver.process(networkInterface);
 
 				if (networkInterface._packetSender != null)
@@ -386,7 +414,7 @@ namespace KBEngine
 
 		~NetworkInterface3()
 		{
-			Dbg.DEBUG_MSG("NetworkInterface::~NetworkInterface(), destructed!!!");
+			Dbg.DEBUG_MSG("NetworkInterface3::~NetworkInterface3(), destructed!!!");
 			reset();
 		}
 
@@ -399,7 +427,7 @@ namespace KBEngine
 			_socket.SetSocketOption(System.Net.Sockets.SocketOptionLevel.Socket, SocketOptionName.ReceiveBuffer, KBEngineApp.app.getInitArgs().getRecvBufferSize() * 2);
 			_socket.NoDelay = true;
 			_socket.Blocking = false;
-			SetKeepAlive(_socket, 5000, 10000);
+			//SetKeepAlive(_socket, 5000, 10000);
 			return _socket;
 		}
 
@@ -473,13 +501,13 @@ namespace KBEngine
 
 		public override void process()
         {
-        	if(!valid())
-        		return;
-
             if (_network_status != null)
             {
                 _network_status.process();
             }
+
+            if (!valid())
+                return;
 
             if (_packetReceiver != null)
 				_packetReceiver.processMessage();

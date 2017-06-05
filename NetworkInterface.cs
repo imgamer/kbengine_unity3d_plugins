@@ -56,7 +56,7 @@
 			return _socket;
 		}
 		
-		public void reset()
+		public virtual void reset()
 		{
 			if(valid())
 			{
@@ -69,7 +69,7 @@
 		}
 		
 
-        public void close()
+        public virtual void close()
         {
            if(_socket != null)
 			{
@@ -167,7 +167,7 @@
 			Event.asyncFireIn("_onConnectionState", new object[] { state });
 		}
 
-		public void connectTo(string ip, int port, ConnectCallback callback, object userData)
+		public virtual void connectTo(string ip, int port, ConnectCallback callback, object userData)
 		{
 			if (valid())
 				throw new InvalidOperationException("Have already connected!");
@@ -202,7 +202,7 @@
 			v.BeginInvoke(state, new AsyncCallback(this._asyncConnectCB), state);
 		}
 
-		public bool send(MemoryStream stream)
+		public virtual bool send(MemoryStream stream)
 		{
 			if (!valid())
 			{
@@ -215,7 +215,7 @@
 			return _packetSender.send(stream);
 		}
 
-		public void process()
+		public virtual void process()
 		{
 			if (!valid())
 				return;
