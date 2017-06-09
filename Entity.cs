@@ -374,6 +374,10 @@
 			}
 			
 			Event.fireOut("onEnterSpace", new object[]{this});
+			
+			// 要立即刷新表现层对象的位置
+			Event.fireOut("set_position", new object[]{this});
+			Event.fireOut("set_direction", new object[]{this});
 		}
 		
 		public virtual void onEnterSpace()
