@@ -456,9 +456,19 @@ namespace KBEngine
 			bool success = (state.error == "" && valid());
 			if(success)
 			{
-				Dbg.DEBUG_MSG(string.Format("NetworkInterface::_onConnectionState(), connect to {0} is success!", state.socket.RemoteEndPoint.ToString()));
-				_packetReceiver = new PacketReceiver();
-				_packetSender = new PacketSender();
+                // 由于此函数是被异步触发，因此在极端的情况下，socket有可能在连接成功的下一刻被提前释放
+                if (_socket != null && _socket.Connected)
+                {
+                    Dbg.DEBUG_MSG(string.Format("NetworkInterface::_onConnectionState(), connect to {0} is success!", _socket.RemoteEndPoint.ToString()));
+                    _packetReceiver = new PacketReceiver();
+                    _packetSender = new PacketSender();
+                }
+                else
+                {
+                    // 代码会走到这里，那说明连接很可能socket被提前释放或关闭了
+                    Dbg.WARNING_MSG(string.Format("NetworkInterface::_onConnectionState(), connect sucess, but socket invalid! ip: {0}:{1}, socket state: {2}", state.connectIP, state.connectPort, _socket == null ? "NULL" : (_socket.Connected ? "CONNECTED" : "NOT CONNECTED")));
+                    success = false;  // 改为连接失败
+                }
 			}
 			else
 			{
