@@ -365,6 +365,7 @@ namespace KBEngine
                     (DateTime.Now - connectTime).Seconds >= 3)
                 {
                     Dbg.WARNING_MSG(string.Format("Status_Connecting::process(), connect to '{0}:{1}' fault!!! timeout!!!", _state.connectIP, _state.connectPort));
+                    _state.error = "Timeout!!!";
                     _state.socket.Close();
                     _state.socket = null;
                 }
@@ -457,18 +458,20 @@ namespace KBEngine
 			if(success)
 			{
                 // 由于此函数是被异步触发，因此在极端的情况下，socket有可能在连接成功的下一刻被提前释放
-                if (_socket != null && _socket.Connected)
-                {
-                    Dbg.DEBUG_MSG(string.Format("NetworkInterface::_onConnectionState(), connect to {0} is success!", _socket.RemoteEndPoint.ToString()));
+            	try
+            	{
+                	Dbg.DEBUG_MSG(string.Format("NetworkInterface::_onConnectionState(), connect to {0} is success!", _socket.RemoteEndPoint.ToString()));
                     _packetReceiver = new PacketReceiver();
                     _packetSender = new PacketSender();
                 }
-                else
-                {
-                    // 代码会走到这里，那说明连接很可能socket被提前释放或关闭了
-                    Dbg.WARNING_MSG(string.Format("NetworkInterface::_onConnectionState(), connect sucess, but socket invalid! ip: {0}:{1}, socket state: {2}", state.connectIP, state.connectPort, _socket == null ? "NULL" : (_socket.Connected ? "CONNECTED" : "NOT CONNECTED")));
-                    success = false;  // 改为连接失败
-                }
+               	catch (Exception e)
+               	{
+               		Dbg.ERROR_MSG(string.Format("NetworkInterface::_onConnectionState(), connect to '{0}:{1}' fault!!! error = '{2}'", state.connectIP, state.connectPort, e));
+               		state.error = "unknown error!!!";
+               		_socket.Close();
+               		_socket = null;
+               		success = false;
+               	}
 			}
 			else
 			{
