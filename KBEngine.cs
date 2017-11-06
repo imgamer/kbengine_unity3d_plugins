@@ -937,7 +937,12 @@
 				EntityDef.idmoduledefs[scriptUtype] = module;
 
 				Type Class = module.script;
-				
+
+                if (propertysize > 255)
+                    module.usePropertyDescrAlias = false;
+                else
+                    module.usePropertyDescrAlias = true;
+
 				while(propertysize > 0)
 				{
 					propertysize--;
@@ -976,21 +981,25 @@
 					savedata.val = savedata.utype.parseDefaultValStr(savedata.defaultValStr);
 					
 					module.propertys[name] = savedata;
-					
-					if(ialiasID >= 0)
+
+                    if (module.usePropertyDescrAlias)
 					{
-						module.usePropertyDescrAlias = true;
 						module.idpropertys[(UInt16)ialiasID] = savedata;
 					}
 					else
 					{
-						module.usePropertyDescrAlias = false;
 						module.idpropertys[properUtype] = savedata;
 					}
 
 					//Dbg.DEBUG_MSG("KBEngine::Client_onImportClientEntityDef: add(" + scriptmodule_name + "), property(" + name + "/" + properUtype + ").");
 				};
-				
+
+
+                if (methodsize > 255)
+                    module.useMethodDescrAlias = false;
+                else
+                    module.useMethodDescrAlias = true;
+
 				while(methodsize > 0)
 				{
 					methodsize--;
@@ -1026,15 +1035,13 @@
 					}
 							
 					module.methods[name] = savedata;
-					
-					if(ialiasID >= 0)
+
+                    if (module.useMethodDescrAlias)
 					{
-						module.useMethodDescrAlias = true;
 						module.idmethods[(UInt16)ialiasID] = savedata;
 					}
 					else
 					{
-						module.useMethodDescrAlias = false;
 						module.idmethods[methodUtype] = savedata;
 					}
 					
