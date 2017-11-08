@@ -86,7 +86,7 @@
 		
 		// 服务端与客户端的版本号以及协议MD5
 		public string serverVersion = "";
-		public string clientVersion = "0.9.12";
+		public string clientVersion = "1.0.0";
 		public string serverScriptVersion = "";
 		public string clientScriptVersion = "0.1.0";
 		public string serverProtocolMD5 = "";
@@ -383,7 +383,7 @@
 		*/
 		public void sendTick()
 		{
-			if(_networkInterface == null || !_networkInterface.valid())
+			if(_networkInterface == null || _networkInterface.connected == false)
 				return;
 
 			if(!loginappMessageImported_ && !baseappMessageImported_)
