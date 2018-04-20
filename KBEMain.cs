@@ -27,13 +27,13 @@ public class KBEMain : MonoBehaviour
 	public bool useAliasEntityID = true;
 	public bool isOnInitCallPropertysSetMethods = true;
 
-	void Awake() 
+	protected virtual void Awake() 
 	 {
 		DontDestroyOnLoad(transform.gameObject);
 	 }
  
 	// Use this for initialization
-	void Start () 
+	protected virtual void Start () 
 	{
 		MonoBehaviour.print("clientapp::start()");
 		installEvents();
@@ -80,7 +80,7 @@ public class KBEMain : MonoBehaviour
 		KBEngine.Event.useSyncMode(!isMultiThreads);
 	}
 	
-	void OnDestroy()
+	protected virtual void OnDestroy()
 	{
 		MonoBehaviour.print("clientapp::OnDestroy(): begin");
         if (KBEngineApp.app != null)
@@ -91,7 +91,7 @@ public class KBEMain : MonoBehaviour
 		MonoBehaviour.print("clientapp::OnDestroy(): end");
 	}
 	
-	void FixedUpdate () 
+	protected virtual void FixedUpdate () 
 	{
 		KBEUpdate();
 	}
