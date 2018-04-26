@@ -59,7 +59,8 @@
 			else
 				bundle.newMessage(Message.messages["Entity_onRemoteMethodCall"]);
 	
-			bundle.writeInt32(this.id);
+            bundle.writeInt32(this.id);
+            bundle.writeInt16(0);
 			
 			return bundle;
 		}

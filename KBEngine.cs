@@ -86,7 +86,7 @@
 		
 		// 服务端与客户端的版本号以及协议MD5
 		public string serverVersion = "";
-		public string clientVersion = "1.1.6";
+		public string clientVersion = "2.0.0";
 		public string serverScriptVersion = "";
 		public string clientScriptVersion = "0.1.0";
 		public string serverProtocolMD5 = "";
@@ -1641,14 +1641,17 @@
 
 			while(stream.length() > 0)
 			{
+                UInt16 componentUtype = 0;
 				UInt16 utype = 0;
 				
 				if(sm.usePropertyDescrAlias)
 				{
+                    componentUtype = stream.readUint8();
 					utype = stream.readUint8();
 				}
 				else
 				{
+                    componentUtype = stream.readUint16();
 					utype = stream.readUint16();
 				}
 			
@@ -1723,11 +1726,18 @@
 			}
 			
 			UInt16 methodUtype = 0;
-
-			if(EntityDef.moduledefs[entity.className].useMethodDescrAlias)
-				methodUtype = stream.readUint8();
-			else
-				methodUtype = stream.readUint16();
+            UInt16 componentPropertyUType = 0;
+            if (EntityDef.moduledefs[entity.className].useMethodDescrAlias)
+            {
+                componentPropertyUType = stream.readUint8();
+                methodUtype = stream.readUint8();
+            }
+            else
+            {
+                componentPropertyUType = stream.readUint16();
+                methodUtype = stream.readUint16();
+            }
+                
 			
 			Method methoddata = EntityDef.moduledefs[entity.className].idmethods[methodUtype];
 			
