@@ -86,7 +86,7 @@
 		
 		// 服务端与客户端的版本号以及协议MD5
 		public string serverVersion = "";
-		public string clientVersion = "1.1.8";
+		public string clientVersion = "1.3.12";
 		public string serverScriptVersion = "";
 		public string clientScriptVersion = "0.1.0";
 		public string serverProtocolMD5 = "";
@@ -2348,7 +2348,7 @@
 			entity.setDirectionFromServer(newDir);
 		}
 		
-		public void Client_onUpdateData_ypr(MemoryStream stream)
+		public void Client_onUpdateData_ypr_optimized(MemoryStream stream)
 		{
 			Int32 eid = getViewEntityIDFromStream(stream);
 			
@@ -2356,89 +2356,76 @@
 			SByte p = stream.readInt8();
 			SByte r = stream.readInt8();
 			
-			_updateVolatileData(eid, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, y, p, r, -1);
+			_updateVolatileData(eid, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, y, p, r, -1, true);
 		}
 		
-		public void Client_onUpdateData_yp(MemoryStream stream)
+		public void Client_onUpdateData_yp_optimized(MemoryStream stream)
 		{
 			Int32 eid = getViewEntityIDFromStream(stream);
 			
 			SByte y = stream.readInt8();
 			SByte p = stream.readInt8();
 			
-			_updateVolatileData(eid, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, y, p, KBEDATATYPE_BASE.KBE_FLT_MAX, -1);
+			_updateVolatileData(eid, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, y, p, KBEDATATYPE_BASE.KBE_FLT_MAX, -1, true);
 		}
 		
-		public void Client_onUpdateData_yr(MemoryStream stream)
+		public void Client_onUpdateData_yr_optimized(MemoryStream stream)
 		{
 			Int32 eid = getViewEntityIDFromStream(stream);
 			
 			SByte y = stream.readInt8();
 			SByte r = stream.readInt8();
 			
-			_updateVolatileData(eid, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, y, KBEDATATYPE_BASE.KBE_FLT_MAX, r, -1);
+			_updateVolatileData(eid, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, y, KBEDATATYPE_BASE.KBE_FLT_MAX, r, -1, true);
 		}
 		
-		public void Client_onUpdateData_pr(MemoryStream stream)
+		public void Client_onUpdateData_pr_optimized(MemoryStream stream)
 		{
 			Int32 eid = getViewEntityIDFromStream(stream);
 			
 			SByte p = stream.readInt8();
 			SByte r = stream.readInt8();
 			
-			_updateVolatileData(eid, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, p, r, -1);
+			_updateVolatileData(eid, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, p, r, -1, true);
 		}
 		
-		public void Client_onUpdateData_y(MemoryStream stream)
+		public void Client_onUpdateData_y_optimized(MemoryStream stream)
 		{
 			Int32 eid = getViewEntityIDFromStream(stream);
 			
 			SByte y = stream.readInt8();
 			
-			_updateVolatileData(eid, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, y, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, -1);
+			_updateVolatileData(eid, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, y, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, -1, true);
 		}
 		
-		public void Client_onUpdateData_p(MemoryStream stream)
+		public void Client_onUpdateData_p_optimized(MemoryStream stream)
 		{
 			Int32 eid = getViewEntityIDFromStream(stream);
 			
 			SByte p = stream.readInt8();
 			
-			_updateVolatileData(eid, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, p, KBEDATATYPE_BASE.KBE_FLT_MAX, -1);
+			_updateVolatileData(eid, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, p, KBEDATATYPE_BASE.KBE_FLT_MAX, -1, true);
 		}
 		
-		public void Client_onUpdateData_r(MemoryStream stream)
+		public void Client_onUpdateData_r_optimized(MemoryStream stream)
 		{
 			Int32 eid = getViewEntityIDFromStream(stream);
 			
 			SByte r = stream.readInt8();
 			
-			_updateVolatileData(eid, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, r, -1);
+			_updateVolatileData(eid, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, r, -1, true);
 		}
 		
-		public void Client_onUpdateData_xz(MemoryStream stream)
+		public void Client_onUpdateData_xz_optimized(MemoryStream stream)
 		{
 			Int32 eid = getViewEntityIDFromStream(stream);
 			
 			Vector2 xz = stream.readPackXZ();
 			
-			_updateVolatileData(eid, xz[0], KBEDATATYPE_BASE.KBE_FLT_MAX, xz[1], KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, 1);
+			_updateVolatileData(eid, xz[0], KBEDATATYPE_BASE.KBE_FLT_MAX, xz[1], KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, 1, true);
 		}
 		
-		public void Client_onUpdateData_xz_ypr(MemoryStream stream)
-		{
-			Int32 eid = getViewEntityIDFromStream(stream);
-			
-			Vector2 xz = stream.readPackXZ();
-	
-			SByte y = stream.readInt8();
-			SByte p = stream.readInt8();
-			SByte r = stream.readInt8();
-			
-			_updateVolatileData(eid, xz[0], KBEDATATYPE_BASE.KBE_FLT_MAX, xz[1], y, p, r, 1);
-		}
-		
-		public void Client_onUpdateData_xz_yp(MemoryStream stream)
+		public void Client_onUpdateData_xz_ypr_optimized(MemoryStream stream)
 		{
 			Int32 eid = getViewEntityIDFromStream(stream);
 			
@@ -2446,11 +2433,24 @@
 	
 			SByte y = stream.readInt8();
 			SByte p = stream.readInt8();
+			SByte r = stream.readInt8();
 			
-			_updateVolatileData(eid, xz[0], KBEDATATYPE_BASE.KBE_FLT_MAX, xz[1], y, p, KBEDATATYPE_BASE.KBE_FLT_MAX, 1);
+			_updateVolatileData(eid, xz[0], KBEDATATYPE_BASE.KBE_FLT_MAX, xz[1], y, p, r, 1, true);
 		}
 		
-		public void Client_onUpdateData_xz_yr(MemoryStream stream)
+		public void Client_onUpdateData_xz_yp_optimized(MemoryStream stream)
+		{
+			Int32 eid = getViewEntityIDFromStream(stream);
+			
+			Vector2 xz = stream.readPackXZ();
+	
+			SByte y = stream.readInt8();
+			SByte p = stream.readInt8();
+			
+			_updateVolatileData(eid, xz[0], KBEDATATYPE_BASE.KBE_FLT_MAX, xz[1], y, p, KBEDATATYPE_BASE.KBE_FLT_MAX, 1, true);
+		}
+		
+		public void Client_onUpdateData_xz_yr_optimized(MemoryStream stream)
 		{
 			Int32 eid = getViewEntityIDFromStream(stream);
 			
@@ -2459,10 +2459,10 @@
 			SByte y = stream.readInt8();
 			SByte r = stream.readInt8();
 			
-			_updateVolatileData(eid, xz[0], KBEDATATYPE_BASE.KBE_FLT_MAX, xz[1], y, KBEDATATYPE_BASE.KBE_FLT_MAX, r, 1);
+			_updateVolatileData(eid, xz[0], KBEDATATYPE_BASE.KBE_FLT_MAX, xz[1], y, KBEDATATYPE_BASE.KBE_FLT_MAX, r, 1, true);
 		}
 		
-		public void Client_onUpdateData_xz_pr(MemoryStream stream)
+		public void Client_onUpdateData_xz_pr_optimized(MemoryStream stream)
 		{
 			Int32 eid = getViewEntityIDFromStream(stream);
 			
@@ -2471,18 +2471,18 @@
 			SByte p = stream.readInt8();
 			SByte r = stream.readInt8();
 			
-			_updateVolatileData(eid, xz[0], KBEDATATYPE_BASE.KBE_FLT_MAX, xz[1], KBEDATATYPE_BASE.KBE_FLT_MAX, p, r, 1);
+			_updateVolatileData(eid, xz[0], KBEDATATYPE_BASE.KBE_FLT_MAX, xz[1], KBEDATATYPE_BASE.KBE_FLT_MAX, p, r, 1, true);
 		}
 		
-		public void Client_onUpdateData_xz_y(MemoryStream stream)
+		public void Client_onUpdateData_xz_y_optimized(MemoryStream stream)
 		{
 			Int32 eid = getViewEntityIDFromStream(stream);
 			Vector2 xz = stream.readPackXZ();
 			SByte yaw = stream.readInt8();
-			_updateVolatileData(eid, xz[0], KBEDATATYPE_BASE.KBE_FLT_MAX, xz[1], yaw, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, 1);
+			_updateVolatileData(eid, xz[0], KBEDATATYPE_BASE.KBE_FLT_MAX, xz[1], yaw, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, 1, true);
 		}
 		
-		public void Client_onUpdateData_xz_p(MemoryStream stream)
+		public void Client_onUpdateData_xz_p_optimized(MemoryStream stream)
 		{
 			Int32 eid = getViewEntityIDFromStream(stream);
 			
@@ -2490,10 +2490,10 @@
 	
 			SByte p = stream.readInt8();
 			
-			_updateVolatileData(eid, xz[0], KBEDATATYPE_BASE.KBE_FLT_MAX, xz[1], KBEDATATYPE_BASE.KBE_FLT_MAX, p, KBEDATATYPE_BASE.KBE_FLT_MAX, 1);
+			_updateVolatileData(eid, xz[0], KBEDATATYPE_BASE.KBE_FLT_MAX, xz[1], KBEDATATYPE_BASE.KBE_FLT_MAX, p, KBEDATATYPE_BASE.KBE_FLT_MAX, 1, true);
 		}
 		
-		public void Client_onUpdateData_xz_r(MemoryStream stream)
+		public void Client_onUpdateData_xz_r_optimized(MemoryStream stream)
 		{
 			Int32 eid = getViewEntityIDFromStream(stream);
 			
@@ -2501,20 +2501,20 @@
 	
 			SByte r = stream.readInt8();
 			
-			_updateVolatileData(eid, xz[0], KBEDATATYPE_BASE.KBE_FLT_MAX, xz[1], KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, r, 1);
+			_updateVolatileData(eid, xz[0], KBEDATATYPE_BASE.KBE_FLT_MAX, xz[1], KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, r, 1, true);
 		}
 		
-		public void Client_onUpdateData_xyz(MemoryStream stream)
+		public void Client_onUpdateData_xyz_optimized(MemoryStream stream)
 		{
 			Int32 eid = getViewEntityIDFromStream(stream);
 			
 			Vector2 xz = stream.readPackXZ();
 			float y = stream.readPackY();
 			
-			_updateVolatileData(eid, xz[0], y, xz[1], KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, 0);
+			_updateVolatileData(eid, xz[0], y, xz[1], KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, 0, true);
 		}
 		
-		public void Client_onUpdateData_xyz_ypr(MemoryStream stream)
+		public void Client_onUpdateData_xyz_ypr_optimized(MemoryStream stream)
 		{
 			Int32 eid = getViewEntityIDFromStream(stream);
 			
@@ -2525,10 +2525,10 @@
 			SByte p = stream.readInt8();
 			SByte r = stream.readInt8();
 			
-			_updateVolatileData(eid, xz[0], y, xz[1], yaw, p, r, 0);
+			_updateVolatileData(eid, xz[0], y, xz[1], yaw, p, r, 0, true);
 		}
 		
-		public void Client_onUpdateData_xyz_yp(MemoryStream stream)
+		public void Client_onUpdateData_xyz_yp_optimized(MemoryStream stream)
 		{
 			Int32 eid = getViewEntityIDFromStream(stream);
 			
@@ -2538,10 +2538,10 @@
 			SByte yaw = stream.readInt8();
 			SByte p = stream.readInt8();
 
-			_updateVolatileData(eid, xz[0], y, xz[1], yaw, p, KBEDATATYPE_BASE.KBE_FLT_MAX, 0);
+			_updateVolatileData(eid, xz[0], y, xz[1], yaw, p, KBEDATATYPE_BASE.KBE_FLT_MAX, 0, true);
 		}
 		
-		public void Client_onUpdateData_xyz_yr(MemoryStream stream)
+		public void Client_onUpdateData_xyz_yr_optimized(MemoryStream stream)
 		{
 			Int32 eid = getViewEntityIDFromStream(stream);
 			
@@ -2551,10 +2551,10 @@
 			SByte yaw = stream.readInt8();
 			SByte r = stream.readInt8();
 			
-			_updateVolatileData(eid, xz[0], y, xz[1], yaw, KBEDATATYPE_BASE.KBE_FLT_MAX, r, 0);
+			_updateVolatileData(eid, xz[0], y, xz[1], yaw, KBEDATATYPE_BASE.KBE_FLT_MAX, r, 0, true);
 		}
 		
-		public void Client_onUpdateData_xyz_pr(MemoryStream stream)
+		public void Client_onUpdateData_xyz_pr_optimized(MemoryStream stream)
 		{
 			Int32 eid = getViewEntityIDFromStream(stream);
 			
@@ -2564,10 +2564,10 @@
 			SByte p = stream.readInt8();
 			SByte r = stream.readInt8();
 			
-			_updateVolatileData(eid, xz[0], y, xz[1], KBEDATATYPE_BASE.KBE_FLT_MAX, p, r, 0);
+			_updateVolatileData(eid, xz[0], y, xz[1], KBEDATATYPE_BASE.KBE_FLT_MAX, p, r, 0, true);
 		}
 		
-		public void Client_onUpdateData_xyz_y(MemoryStream stream)
+		public void Client_onUpdateData_xyz_y_optimized(MemoryStream stream)
 		{
 			Int32 eid = getViewEntityIDFromStream(stream);
 			
@@ -2575,10 +2575,10 @@
 			float y = stream.readPackY();
 			
 			SByte yaw = stream.readInt8();
-			_updateVolatileData(eid, xz[0], y, xz[1], yaw, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, 0);
+			_updateVolatileData(eid, xz[0], y, xz[1], yaw, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, 0, true);
 		}
 		
-		public void Client_onUpdateData_xyz_p(MemoryStream stream)
+		public void Client_onUpdateData_xyz_p_optimized(MemoryStream stream)
 		{
 			Int32 eid = getViewEntityIDFromStream(stream);
 			
@@ -2587,10 +2587,10 @@
 			
 			SByte p = stream.readInt8();
 			
-			_updateVolatileData(eid, xz[0], y, xz[1], KBEDATATYPE_BASE.KBE_FLT_MAX, p, KBEDATATYPE_BASE.KBE_FLT_MAX, 0);
+			_updateVolatileData(eid, xz[0], y, xz[1], KBEDATATYPE_BASE.KBE_FLT_MAX, p, KBEDATATYPE_BASE.KBE_FLT_MAX, 0, true);
 		}
 		
-		public void Client_onUpdateData_xyz_r(MemoryStream stream)
+		public void Client_onUpdateData_xyz_r_optimized(MemoryStream stream)
 		{
 			Int32 eid = getViewEntityIDFromStream(stream);
 			
@@ -2599,10 +2599,284 @@
 			
 			SByte r = stream.readInt8();
 			
-			_updateVolatileData(eid, xz[0], y, xz[1], KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, r, 0);
-		}
-		
-		private void _updateVolatileData(Int32 entityID, float x, float y, float z, float yaw, float pitch, float roll, sbyte isOnGround)
+			_updateVolatileData(eid, xz[0], y, xz[1], KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, r, 0, true);
+        }
+
+        public void Client_onUpdateData_ypr(MemoryStream stream)
+        {
+            Int32 eid = getViewEntityIDFromStream(stream);
+
+            float y = stream.readFloat();
+            float p = stream.readFloat();
+            float r = stream.readFloat();
+
+            _updateVolatileData(eid, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, y, p, r, -1, false);
+        }
+
+        public void Client_onUpdateData_yp(MemoryStream stream)
+        {
+            Int32 eid = getViewEntityIDFromStream(stream);
+
+            float y = stream.readFloat();
+            float p = stream.readFloat();
+
+            _updateVolatileData(eid, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, y, p, KBEDATATYPE_BASE.KBE_FLT_MAX, -1, false);
+        }
+
+        public void Client_onUpdateData_yr(MemoryStream stream)
+        {
+            Int32 eid = getViewEntityIDFromStream(stream);
+
+            float y = stream.readFloat();
+            float r = stream.readFloat();
+
+            _updateVolatileData(eid, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, y, KBEDATATYPE_BASE.KBE_FLT_MAX, r, -1, false);
+        }
+
+        public void Client_onUpdateData_pr(MemoryStream stream)
+        {
+            Int32 eid = getViewEntityIDFromStream(stream);
+
+            float p = stream.readFloat();
+            float r = stream.readFloat();
+
+            _updateVolatileData(eid, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, p, r, -1, false);
+        }
+
+        public void Client_onUpdateData_y(MemoryStream stream)
+        {
+            Int32 eid = getViewEntityIDFromStream(stream);
+
+            float y = stream.readFloat();
+
+            _updateVolatileData(eid, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, y, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, -1, false);
+        }
+
+        public void Client_onUpdateData_p(MemoryStream stream)
+        {
+            Int32 eid = getViewEntityIDFromStream(stream);
+
+            float p = stream.readFloat();
+
+            _updateVolatileData(eid, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, p, KBEDATATYPE_BASE.KBE_FLT_MAX, -1, false);
+        }
+
+        public void Client_onUpdateData_r(MemoryStream stream)
+        {
+            Int32 eid = getViewEntityIDFromStream(stream);
+
+            float r = stream.readFloat();
+
+            _updateVolatileData(eid, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, r, -1, false);
+        }
+
+        public void Client_onUpdateData_xz(MemoryStream stream)
+        {
+            Int32 eid = getViewEntityIDFromStream(stream);
+
+            float x = stream.readFloat();
+            float z = stream.readFloat();
+
+            _updateVolatileData(eid, x, KBEDATATYPE_BASE.KBE_FLT_MAX, z, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, 1, false);
+        }
+
+        public void Client_onUpdateData_xz_ypr(MemoryStream stream)
+        {
+            Int32 eid = getViewEntityIDFromStream(stream);
+
+            float x = stream.readFloat();
+            float z = stream.readFloat();
+
+            float y = stream.readFloat();
+            float p = stream.readFloat();
+            float r = stream.readFloat();
+
+            _updateVolatileData(eid, x, KBEDATATYPE_BASE.KBE_FLT_MAX, z, y, p, r, 1, false);
+        }
+
+        public void Client_onUpdateData_xz_yp(MemoryStream stream)
+        {
+            Int32 eid = getViewEntityIDFromStream(stream);
+
+            float x = stream.readFloat();
+            float z = stream.readFloat();
+
+            float y = stream.readFloat();
+            float p = stream.readFloat();
+
+            _updateVolatileData(eid, x, KBEDATATYPE_BASE.KBE_FLT_MAX, z, y, p, KBEDATATYPE_BASE.KBE_FLT_MAX, 1, false);
+        }
+
+        public void Client_onUpdateData_xz_yr(MemoryStream stream)
+        {
+            Int32 eid = getViewEntityIDFromStream(stream);
+
+            float x = stream.readFloat();
+            float z = stream.readFloat();
+
+            float y = stream.readFloat();
+            float r = stream.readFloat();
+
+            _updateVolatileData(eid, x, KBEDATATYPE_BASE.KBE_FLT_MAX, z, y, KBEDATATYPE_BASE.KBE_FLT_MAX, r, 1, false);
+        }
+
+        public void Client_onUpdateData_xz_pr(MemoryStream stream)
+        {
+            Int32 eid = getViewEntityIDFromStream(stream);
+
+            float x = stream.readFloat();
+            float z = stream.readFloat();
+
+            float p = stream.readFloat();
+            float r = stream.readFloat();
+
+            _updateVolatileData(eid, x, KBEDATATYPE_BASE.KBE_FLT_MAX, z, KBEDATATYPE_BASE.KBE_FLT_MAX, p, r, 1, false);
+        }
+
+        public void Client_onUpdateData_xz_y(MemoryStream stream)
+        {
+            Int32 eid = getViewEntityIDFromStream(stream);
+
+            float x = stream.readFloat();
+            float z = stream.readFloat();
+
+            float y = stream.readFloat();
+
+            _updateVolatileData(eid, x, KBEDATATYPE_BASE.KBE_FLT_MAX, z, y, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, 1, false);
+        }
+
+        public void Client_onUpdateData_xz_p(MemoryStream stream)
+        {
+            Int32 eid = getViewEntityIDFromStream(stream);
+
+            float x = stream.readFloat();
+            float z = stream.readFloat();
+
+            float p = stream.readFloat();
+
+            _updateVolatileData(eid, x, KBEDATATYPE_BASE.KBE_FLT_MAX, z, KBEDATATYPE_BASE.KBE_FLT_MAX, p, KBEDATATYPE_BASE.KBE_FLT_MAX, 1, false);
+        }
+
+        public void Client_onUpdateData_xz_r(MemoryStream stream)
+        {
+            Int32 eid = getViewEntityIDFromStream(stream);
+
+            float x = stream.readFloat();
+            float z = stream.readFloat();
+
+            float r = stream.readFloat();
+
+            _updateVolatileData(eid, x, KBEDATATYPE_BASE.KBE_FLT_MAX, z, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, r, 1, false);
+        }
+
+        public void Client_onUpdateData_xyz(MemoryStream stream)
+        {
+            Int32 eid = getViewEntityIDFromStream(stream);
+
+            float x = stream.readFloat();
+            float y = stream.readFloat();
+            float z = stream.readFloat();
+
+            _updateVolatileData(eid, x, y, z, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, 0, false);
+        }
+
+        public void Client_onUpdateData_xyz_ypr(MemoryStream stream)
+        {
+            Int32 eid = getViewEntityIDFromStream(stream);
+
+            float x = stream.readFloat();
+            float y = stream.readFloat();
+            float z = stream.readFloat();
+
+            float yaw = stream.readFloat();
+            float p = stream.readFloat();
+            float r = stream.readFloat();
+
+            _updateVolatileData(eid, x, y, z, yaw, p, r, 0, false);
+        }
+
+        public void Client_onUpdateData_xyz_yp(MemoryStream stream)
+        {
+            Int32 eid = getViewEntityIDFromStream(stream);
+
+            float x = stream.readFloat();
+            float y = stream.readFloat();
+            float z = stream.readFloat();
+
+            float yaw = stream.readFloat();
+            float p = stream.readFloat();
+
+            _updateVolatileData(eid, x, y, z, yaw, p, KBEDATATYPE_BASE.KBE_FLT_MAX, 0, false);
+        }
+
+        public void Client_onUpdateData_xyz_yr(MemoryStream stream)
+        {
+            Int32 eid = getViewEntityIDFromStream(stream);
+
+            float x = stream.readFloat();
+            float y = stream.readFloat();
+            float z = stream.readFloat();
+
+            float yaw = stream.readFloat();
+            float r = stream.readFloat();
+
+            _updateVolatileData(eid, x, y, z, yaw, KBEDATATYPE_BASE.KBE_FLT_MAX, r, 0, false);
+        }
+
+        public void Client_onUpdateData_xyz_pr(MemoryStream stream)
+        {
+            Int32 eid = getViewEntityIDFromStream(stream);
+
+            float x = stream.readFloat();
+            float y = stream.readFloat();
+            float z = stream.readFloat();
+
+            float p = stream.readFloat();
+            float r = stream.readFloat();
+
+            _updateVolatileData(eid, x, y, z, KBEDATATYPE_BASE.KBE_FLT_MAX, p, r, 0, false);
+        }
+
+        public void Client_onUpdateData_xyz_y(MemoryStream stream)
+        {
+            Int32 eid = getViewEntityIDFromStream(stream);
+
+            float x = stream.readFloat();
+            float y = stream.readFloat();
+            float z = stream.readFloat();
+
+            float yaw = stream.readFloat();
+
+            _updateVolatileData(eid, x, y, z, yaw, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, 0, false);
+        }
+
+        public void Client_onUpdateData_xyz_p(MemoryStream stream)
+        {
+            Int32 eid = getViewEntityIDFromStream(stream);
+
+            float x = stream.readFloat();
+            float y = stream.readFloat();
+            float z = stream.readFloat();
+
+            float p = stream.readFloat();
+
+            _updateVolatileData(eid, x, y, z, KBEDATATYPE_BASE.KBE_FLT_MAX, p, KBEDATATYPE_BASE.KBE_FLT_MAX, 0, false);
+        }
+
+        public void Client_onUpdateData_xyz_r(MemoryStream stream)
+        {
+            Int32 eid = getViewEntityIDFromStream(stream);
+
+            float x = stream.readFloat();
+            float y = stream.readFloat();
+            float z = stream.readFloat();
+
+            float r = stream.readFloat();
+
+            _updateVolatileData(eid, x, y, z, KBEDATATYPE_BASE.KBE_FLT_MAX, KBEDATATYPE_BASE.KBE_FLT_MAX, r, 0, false);
+        }
+
+        private void _updateVolatileData(Int32 entityID, float x, float y, float z, float yaw, float pitch, float roll, sbyte isOnGround, bool isOptimized)
 		{
 			Entity entity = null;
 
@@ -2626,21 +2900,42 @@
 			
 			if(roll != KBEDATATYPE_BASE.KBE_FLT_MAX)
 			{
-				changeDirection = true;
-				newDir.x = KBEMath.int82angle((SByte)roll, false);
-			}
+                changeDirection = true;
+                if (isOptimized)
+                {
+                    newDir.x = KBEMath.int82angle((SByte)roll, false);
+                }
+                else
+                {
+                    newDir.x = roll;
+                }
+            }
 
 			if(pitch != KBEDATATYPE_BASE.KBE_FLT_MAX)
 			{
 				changeDirection = true;
-                newDir.y = KBEMath.int82angle((SByte)pitch, false);
-			}
+                if (isOptimized)
+                {
+                    newDir.y = KBEMath.int82angle((SByte)pitch, false);
+                }
+                else
+                {
+                    newDir.y = pitch;
+                }
+            }
 			
 			if(yaw != KBEDATATYPE_BASE.KBE_FLT_MAX)
 			{
 				changeDirection = true;
-				newDir.z = KBEMath.int82angle((SByte)yaw, false);
-			}
+                if (isOptimized)
+                {
+                    newDir.z = KBEMath.int82angle((SByte)yaw, false);
+                }
+                else
+                {
+                    newDir.z = yaw;
+                }
+            }
 
 			newDir = KBEMath.KBEngine2UnityDirection(newDir);
 
@@ -2672,7 +2967,7 @@
             if (y == KBEDATATYPE_BASE.KBE_FLT_MAX) y = 0.0f;
             if (z == KBEDATATYPE_BASE.KBE_FLT_MAX) z = 0.0f;
 
-            Vector3 pos = Vector3.zero;
+            Vector3 pos = new Vector3(x, y, z);
 
             if (positionChanged)
             {
@@ -2689,7 +2984,8 @@
                 else
                 {
                     // 没有父类则以主角为中心计算世界朝向
-                    pos = new Vector3(x + _entityServerPos.x, y + _entityServerPos.y, z + _entityServerPos.z);
+                    if (isOptimized)
+                        pos = new Vector3(x + _entityServerPos.x, y + _entityServerPos.y, z + _entityServerPos.z);
 					entity.localPosition = pos;
                 }
 			}
